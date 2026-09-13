@@ -204,8 +204,25 @@ export async function projectAktif(): Promise<string> {
     if (tersimpan) return tersimpan;
   }
 
+  // Dropdown "Select project" di sidebar (dashboard/page.tsx) MELAKUKAN
+  // QUERY SENDIRI yang terpisah dari fungsi ini untuk auto-pilih project -
+  // dua jalur independen, sama-sama menulis ke kunci sessionStorage yang
+  // sama, tapi TIDAK saling tahu kapan yang lain selesai. Akibatnya (bug
+  // nyata, dilaporkan user via screenshot): widget ini kadang selesai
+  // resolve LEBIH DULU dan langsung menampilkan datanya, sementara dropdown
+  // di sidebar masih dalam perjalanan query-nya sendiri dan sesaat masih
+  // terlihat kosong ("— Select project —") - kelihatan seolah data bocor
+  // sebelum project dipilih, padahal cuma dua bagian layar yang belum
+  // sempat sinkron. Event ini memberi dashboard/page.tsx cara mendengar
+  // "project ini yang baru saja terpilih di sini" tanpa CircularDependency
+  // atau prop-drilling baru lewat WidgetProps.
+  const beriTahuPendengar = (id: string) => {
+    try { window.dispatchEvent(new CustomEvent('fs:project-resolved', { detail: id })); } catch { /* diam */ }
+  };
+
   const simpan = (id: string) => {
     try { sessionStorage.setItem(KUNCI_PROJECT, id); } catch { /* diam - sekadar kenyamanan */ }
+    beriTahuPendengar(id);
     return id;
   };
 

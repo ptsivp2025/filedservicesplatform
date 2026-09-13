@@ -41,9 +41,14 @@ export function SectionHeader({ icon, title }: { icon: string; title: string }) 
   );
 }
 
-export function SectionHeaderSmall({ icon, title }: { icon: string; title: string }) {
+export function SectionHeaderSmall({ icon, title, warna = '#94a3b8' }: { icon: string; title: string; warna?: string }) {
+  // warna default (abu terang) dirancang untuk duduk di atas kartu PUTIH -
+  // dipakai lagi langsung di atas gradasi maroon/pink (Dashboard, section
+  // "Ringkasan"/"Progres"/dst) jadi nyaris tidak terbaca (dilaporkan user
+  // via screenshot). Pemanggil di latar gelap WAJIB mengoper `warna` yang
+  // kontras (mis. putih), bukan mengandalkan default ini.
   return (
-    <p className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5" style={{ color: '#94a3b8' }}>
+    <p className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5" style={{ color: warna }}>
       <span aria-hidden="true">{icon}</span>{title}
     </p>
   );

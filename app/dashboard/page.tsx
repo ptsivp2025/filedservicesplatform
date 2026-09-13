@@ -756,6 +756,28 @@ export default function Dashboard() {
     })();
   }, [bisaPilihFsProject, currentUser, isFullAccess]);
 
+  // Dengarkan resolusi project dari sumber LAIN (ControlRoomWidget/
+  // ExecutionWidget lewat projectAktif() di lib/fs-cycle.ts) - efek di atas
+  // dan projectAktif() sama-sama query fs_projects sendiri-sendiri untuk
+  // auto-pilih, dan siapa pun yang selesai LEBIH DULU tidak pernah
+  // memberitahu yang lain. Akibatnya (dilaporkan user via screenshot):
+  // dropdown "Select project" sempat terlihat kosong padahal widget
+  // Dashboard di bawahnya sudah menampilkan data (untuk project yang SAMA,
+  // yang sudah di-auto-pilih widget itu sendiri lewat projectAktif()) -
+  // bukan kebocoran data (RLS tetap membatasi ke project milik user yang
+  // sedang login), tapi dua bagian layar yang belum sinkron dan
+  // membingungkan/mencurigakan buat dilihat. Cuma mengadopsi kalau
+  // dropdown ini SENDIRI belum punya pilihan - tidak menimpa project yang
+  // sudah dipilih manual oleh user.
+  useEffect(() => {
+    const dengarkan = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail;
+      if (id) setFsSelectedProjectId(prev => prev || id);
+    };
+    window.addEventListener('fs:project-resolved', dengarkan);
+    return () => window.removeEventListener('fs:project-resolved', dengarkan);
+  }, []);
+
   /** Naik tiap kali project aktif diganti SAAT iframe field-service/teknisi
    *  sedang terbuka - dipakai bagian dari key iframe di bawah supaya iframe
    *  remount (baca ulang sessionStorage) TANPA mengubah nilai internalUrl

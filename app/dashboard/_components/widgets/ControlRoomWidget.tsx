@@ -488,7 +488,11 @@ export function ControlRoomWidget({ user }: WidgetProps) {
       ) : overview && (
         <>
           {/* ── Ringkasan ── */}
-          <SectionHeaderSmall icon="📊" title="Ringkasan" />
+          {/* warna putih WAJIB di sini - default abu SectionHeaderSmall
+              dirancang untuk latar putih, dan section ini duduk langsung di
+              atas gradasi maroon/pink widget (bukan di dalam kartu putih) -
+              nyaris tak terbaca dengan abu (dilaporkan user via screenshot). */}
+          <SectionHeaderSmall icon="📊" title="Ringkasan" warna="#ffffff" />
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5">
             <UbinKpi ikon={Tv} label="Total TV" nilai={overview.total_tv} warna={C.primer}
               sub={`${overview.building_total} gedung · ${overview.region_total} wilayah`} />
@@ -621,7 +625,7 @@ export function ControlRoomWidget({ user }: WidgetProps) {
                      langsung, masing-masing dengan `key` eksplisit supaya
                      identitasnya stabil walau "Perlu Perhatian"/"Progres
                      per PIC" kadang tidak dirender (render kondisional). */}
-              <SectionHeaderSmall icon="📈" title="Progres" />
+              <SectionHeaderSmall icon="📈" title="Progres" warna="#ffffff" />
               <Masonry columns={3} minColumnWidth={280} gap={12}>
                 <Kartu key="progres-siklus">
                   <JudulPanel ikon={Activity} judul="Progres Siklus"
@@ -749,7 +753,7 @@ export function ControlRoomWidget({ user }: WidgetProps) {
                 </Kartu>
               </Masonry>
 
-              <SectionHeaderSmall icon="🔍" title="Analisis Masalah" />
+              <SectionHeaderSmall icon="🔍" title="Analisis Masalah" warna="#ffffff" />
               <Masonry columns={3} minColumnWidth={280} gap={12}>
                 <Kartu key="komposisi-status-tv">
                   <JudulPanel ikon={Tv} judul="Komposisi Status TV"
@@ -851,7 +855,7 @@ export function ControlRoomWidget({ user }: WidgetProps) {
 
               {pics.length > 0 && (
                 <>
-                  <SectionHeaderSmall icon="👥" title="Tim / PIC" />
+                  <SectionHeaderSmall icon="👥" title="Tim / PIC" warna="#ffffff" />
                   <Kartu padat>
                     <div className="px-3.5 pt-3">
                       <JudulPanel ikon={Users} judul="Progres per PIC"

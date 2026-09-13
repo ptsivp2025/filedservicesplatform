@@ -35,6 +35,17 @@ export function setSession(userData: object): void {
 export function clearSession(): void {
   sessionStorage.removeItem(SS_USER);
   sessionStorage.removeItem(SS_TIME);
+  // fs_selected_project_id (dibaca sinkron oleh ControlRoomWidget,
+  // ExecutionWidget, dashboard/page.tsx, field-service/page.tsx sebagai nilai
+  // AWAL sebelum project list sempat dimuat) HARUS ikut dibuang di sini juga -
+  // ditemukan lewat laporan user: buka Dashboard, dropdown "Select project"
+  // masih kosong, tapi tabel/angka ringkasan SUDAH tampil. Sebabnya: kunci
+  // ini tidak pernah dibersihkan saat logout, jadi begitu user lain login di
+  // tab yang sama, widget membaca project id milik user SEBELUMNYA dari
+  // sessionStorage dan langsung memuat datanya sebelum user baru sempat
+  // memilih project sendiri - risiko nyata kalau user baru itu tidak
+  // di-assign ke project yang sama.
+  sessionStorage.removeItem('fs_selected_project_id');
   // Fire-and-forget: invalidate cookie di server
   // Token PostgREST ikut dibuang; kalau tertinggal, tab yang sama masih
   // memegang identitas user yang baru saja keluar.

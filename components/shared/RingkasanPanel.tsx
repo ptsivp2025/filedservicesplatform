@@ -122,7 +122,15 @@ export function DonutLegenda({ data, pusat, labelPusat, ukuran = 84, maksBaris =
           const baris = (
             <>
               <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: d.color }} />
-              <span className="text-[10px] text-slate-600 flex-shrink-0 truncate" style={{ width: '6.5rem' }}>{d.label}</span>
+              {/* flex-shrink-0 di sini (versi lama) memaksa label SELALU
+                  6.5rem penuh walau kartunya sempit (mis. kartu 280px di
+                  ReviewSiklus.tsx) - total lebar dot+label+bar+angka jadi
+                  lebih lebar dari kartunya sendiri, dan angka di ujung kanan
+                  terdorong keluar dari kotak (dilaporkan user via
+                  screenshot). minWidth:0 mengizinkan flexbox MENYUSUTKAN
+                  label ini di bawah 6.5rem saat ruang sempit - classic fix
+                  untuk truncate yang tidak berfungsi di dalam flex item. */}
+              <span className="text-[10px] text-slate-600 truncate" style={{ width: '6.5rem', minWidth: 0 }}>{d.label}</span>
               <span className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: '#f1f5f9', minWidth: 16 }}>
                 <span className="block h-full rounded-full"
                   style={{ width: `${total > 0 ? (d.value / total) * 100 : 0}%`, background: d.color }} />
