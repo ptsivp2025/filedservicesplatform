@@ -43,6 +43,7 @@ import {
   ConfirmDialog, DonutLegenda, SearchableSelect, type ConfirmState,
   KartuOperasional as Kartu, JudulPanel, UbinKpi, Bar2, BarisDrill, LencanaMasalah,
   KosongOperasional as Kosong, HeaderDrill, TipGrafik, DialogBesar, Masonry,
+  SectionHeaderSmall,
 } from '@/components/shared';
 import {
   ambilCycles, cycleBerjalan, ambilOverview, ambilRegionProgress, ambilAttention,
@@ -486,7 +487,8 @@ export function ControlRoomWidget({ user }: WidgetProps) {
         </Kartu>
       ) : overview && (
         <>
-          {/* ── Baris KPI ── */}
+          {/* ── Ringkasan ── */}
+          <SectionHeaderSmall icon="📊" title="Ringkasan" />
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5">
             <UbinKpi ikon={Tv} label="Total TV" nilai={overview.total_tv} warna={C.primer}
               sub={`${overview.building_total} gedung · ${overview.region_total} wilayah`} />
@@ -619,6 +621,7 @@ export function ControlRoomWidget({ user }: WidgetProps) {
                      langsung, masing-masing dengan `key` eksplisit supaya
                      identitasnya stabil walau "Perlu Perhatian"/"Progres
                      per PIC" kadang tidak dirender (render kondisional). */}
+              <SectionHeaderSmall icon="📈" title="Progres" />
               <Masonry columns={3} minColumnWidth={280} gap={12}>
                 <Kartu key="progres-siklus">
                   <JudulPanel ikon={Activity} judul="Progres Siklus"
@@ -717,6 +720,37 @@ export function ControlRoomWidget({ user }: WidgetProps) {
                   )}
                 </Kartu>
 
+                <Kartu key="tren-antar-siklus">
+                  <JudulPanel ikon={TrendingUp} judul="Tren Antar Siklus"
+                    ket="Membaik atau memburuk dibanding akhir pekan sebelumnya" />
+                  {dataTren.length < 2 ? (
+                    <Kosong judul="Belum cukup data"
+                      teks="Tren muncul setelah ada minimal dua siklus. Satu titik bukan tren." />
+                  ) : (
+                    <div style={{ width: '100%', height: 168 }}>
+                      <ResponsiveContainer>
+                        <AreaChart data={dataTren} margin={{ top: 4, right: 6, left: -22, bottom: 0 }}>
+                          <defs>
+                            <linearGradient id="gradTren" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor={C.sekunder} stopOpacity={0.28} />
+                              <stop offset="100%" stopColor={C.sekunder} stopOpacity={0.02} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" stroke={C.garis} vertical={false} />
+                          <XAxis dataKey="nama" tick={{ fontSize: 10, fill: C.redup }} tickLine={false} axisLine={false} />
+                          <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: C.redup }} tickLine={false} axisLine={false} width={34} />
+                          <Tooltip content={<TipGrafik satuan="%" />} />
+                          <Area type="monotone" dataKey="pct" name="Selesai" stroke={C.primer} strokeWidth={2}
+                            fill="url(#gradTren)" isAnimationActive={animasi} dot={{ r: 3, fill: C.primer }} />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+                </Kartu>
+              </Masonry>
+
+              <SectionHeaderSmall icon="🔍" title="Analisis Masalah" />
+              <Masonry columns={3} minColumnWidth={280} gap={12}>
                 <Kartu key="komposisi-status-tv">
                   <JudulPanel ikon={Tv} judul="Komposisi Status TV"
                     ket="Klik salah satu untuk melihat daftar TV-nya" />
@@ -782,34 +816,6 @@ export function ControlRoomWidget({ user }: WidgetProps) {
                   </Kartu>
                 )}
 
-                <Kartu key="tren-antar-siklus">
-                  <JudulPanel ikon={TrendingUp} judul="Tren Antar Siklus"
-                    ket="Membaik atau memburuk dibanding akhir pekan sebelumnya" />
-                  {dataTren.length < 2 ? (
-                    <Kosong judul="Belum cukup data"
-                      teks="Tren muncul setelah ada minimal dua siklus. Satu titik bukan tren." />
-                  ) : (
-                    <div style={{ width: '100%', height: 168 }}>
-                      <ResponsiveContainer>
-                        <AreaChart data={dataTren} margin={{ top: 4, right: 6, left: -22, bottom: 0 }}>
-                          <defs>
-                            <linearGradient id="gradTren" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="0%" stopColor={C.sekunder} stopOpacity={0.28} />
-                              <stop offset="100%" stopColor={C.sekunder} stopOpacity={0.02} />
-                            </linearGradient>
-                          </defs>
-                          <CartesianGrid strokeDasharray="3 3" stroke={C.garis} vertical={false} />
-                          <XAxis dataKey="nama" tick={{ fontSize: 10, fill: C.redup }} tickLine={false} axisLine={false} />
-                          <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: C.redup }} tickLine={false} axisLine={false} width={34} />
-                          <Tooltip content={<TipGrafik satuan="%" />} />
-                          <Area type="monotone" dataKey="pct" name="Selesai" stroke={C.primer} strokeWidth={2}
-                            fill="url(#gradTren)" isAnimationActive={animasi} dot={{ r: 3, fill: C.primer }} />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    </div>
-                  )}
-                </Kartu>
-
                 <Kartu key="kesiapan-gedung">
                   <JudulPanel ikon={Building2} judul="Kesiapan Gedung"
                     ket="&quot;Tinggal sedikit lagi&quot; dan &quot;belum tersentuh&quot; adalah dua masalah yang sangat berbeda" />
@@ -841,9 +847,12 @@ export function ControlRoomWidget({ user }: WidgetProps) {
                     );
                   })()}
                 </Kartu>
+              </Masonry>
 
-                {pics.length > 0 && (
-                  <Kartu key="progres-per-pic" padat>
+              {pics.length > 0 && (
+                <>
+                  <SectionHeaderSmall icon="👥" title="Tim / PIC" />
+                  <Kartu padat>
                     <div className="px-3.5 pt-3">
                       <JudulPanel ikon={Users} judul="Progres per PIC"
                         ket="Diurutkan dari yang paling tertinggal"
@@ -865,8 +874,8 @@ export function ControlRoomWidget({ user }: WidgetProps) {
                       ))}
                     </div>
                   </Kartu>
-                )}
-              </Masonry>
+                </>
+              )}
 
               {/* ── Antrean persetujuan check-out tidak tuntas ── */}
               {bolehKelola && pendingCheckout.length > 0 && (
