@@ -1,0 +1,418 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Token desain ─────────────────────────────────────────────────────────
+   Warna merek TIDAK lagi ditulis di sini. Sumbernya lib/merek.ts, yang
+   membacanya dari database dan memasangnya sebagai --merek-* di <html>
+   (lihat tulisWarnaKeCSS). Blok --ivp-brand yang dulu ada di sini memakai
+   merah rose yang dipatok, sehingga menjadi sumber warna KEDUA di samping
+   database - dan dua sumber warna berarti cepat atau lambat keduanya berbeda.
+
+   Skala z-index juga tidak di sini. Sumbernya lib/z-index.ts. Blok --z-*
+   yang dulu ada di sini memberi --z-modal: 100, sementara lib/z-index.ts
+   memberi overlay: 1000 untuk lapisan yang sama - selisih sepuluh kali lipat
+   antara dua tangga yang seharusnya satu. Ketiga kelas yang memakainya
+   (.ivp-modal-overlay, .ivp-modal-top-overlay, .ivp-toast) tidak dipakai satu
+   pun di JSX, jadi keduanya dibuang bersama tanpa mengubah tampilan apa pun.
+
+   Nilai ukuran (radius, bayangan, jarak, tipografi) ada di lib/desain.ts.
+   ───────────────────────────────────────────────────────────────────────── */
+:root {
+  /* Nilai awal; ditimpa lib/merek.ts begitu pengaturannya termuat. Ditulis di
+     sini supaya CSS yang memakainya tetap punya warna sebelum JavaScript
+     jalan - bukan sebagai sumber kebenaran. */
+  --merek-utama:        #e11d48;
+  --merek-utama-2:      #be123c;
+  --merek-aksen:        #c8861d;
+  --merek-utama-tembus: rgba(225, 29, 72, 0.1);
+}
+
+/* ── Prevent white background flash on zoom/scale ───────────────────────── */
+html, body {
+  background: transparent;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
+
+/* ── Modern thin scrollbar — semua platform ─────────────────────────────── */
+/* Webkit (Chrome, Edge, Safari) */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; border-radius: 99px; }
+::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.25);
+  border-radius: 99px;
+  transition: background 0.2s;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(99, 102, 241, 0.55); }
+::-webkit-scrollbar-corner { background: transparent; }
+/* Firefox */
+* { scrollbar-width: thin; scrollbar-color: rgba(99,102,241,0.25) transparent; }
+
+/* ── Global responsive safety ───────────────────────────────────────────── */
+html {
+  -webkit-text-size-adjust: 100%;   /* prevent iOS font-size inflation */
+}
+
+/* ── Skala layar ponsel ───────────────────────────────────────────────────
+   Semua ukuran Tailwind — teks, padding, gap, lebar ikon — dinyatakan dalam
+   rem, yaitu kelipatan ukuran font akar. Mengecilkan akar sekali di sini
+   mengecilkan SELURUHNYA secara serempak dan sebanding, tanpa perlu menyisir
+   ribuan kelas satu per satu dan tanpa risiko satu layar ketinggalan lalu
+   terlihat lebih besar sendiri.
+
+   87.5% (14px dari 16px) dipilih karena masih di atas ambang keterbacaan:
+   teks terkecil yang dipakai antarmuka ini (text-xs = 0.75rem) menjadi 10.5px,
+   bukan turun sampai tak terbaca.
+
+   Nilai yang ditulis dalam px — mis. text-[10px] — memang tidak ikut mengecil.
+   Itu disengaja: yang seperti itu sudah kecil sejak awal. */
+@media (max-width: 640px) {
+  html { font-size: 87.5%; }
+}
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+/* ── Page / section transitions ─────────────────────────────────────────────
+   ATURAN WAJIB untuk animasi masuk: frame terakhir memakai `transform: none`,
+   BUKAN `translateY(0)` / `scale(1)`.
+
+   Keduanya sama-sama tak kelihatan, tapi tidak sama bagi CSS. `translateY(0)`
+   tetap transform yang aktif, dan animasi ber-fill-mode `both`/`forwards`
+   MENAHAN frame terakhir itu selamanya. Elemen yang punya transform aktif
+   menjadi containing block bagi keturunannya yang `position: fixed` — jadi
+   `inset-0` pada modal berhenti di tepi elemen ini, bukan di tepi layar.
+
+   Gejalanya di lapangan: popup muncul di dalam panel konten yang bisa
+   digulir. Sidebar dan header tidak ikut menggelap, dan user harus menggulir
+   dulu untuk menemukan popup-nya. Yang salah bukan modalnya — modalnya tidak
+   pernah tahu ada leluhur yang memerangkapnya.
+
+   `transform: none` di frame terakhir menghapus jebakan itu tanpa mengubah
+   satu piksel pun: interpolasinya tetap mulus (none = matriks identitas), dan
+   setelah animasi selesai elemennya benar-benar bebas transform. */
+@keyframes lcPageIn {
+  from { opacity: 0; transform: translateY(50px) scale(0.92); }
+  to   { opacity: 1; transform: none; }
+}
+.lc-page-enter { animation: lcPageIn 0.95s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes zoomIn {
+  from { opacity: 0; transform: scale(0.75); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(60px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-35px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.animate-fade-in  { animation: fadeIn   0.65s ease-out both; }
+.animate-zoom-in  { animation: zoomIn   0.90s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.animate-slide-up { animation: slideUp  0.80s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.animate-slide-down { animation: slideDown 0.70s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* Staggered list rows */
+.stagger-item { animation: slideUp 0.85s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.stagger-item:nth-child(1)  { animation-delay:  0ms; }
+.stagger-item:nth-child(2)  { animation-delay: 75ms; }
+.stagger-item:nth-child(3)  { animation-delay:140ms; }
+.stagger-item:nth-child(4)  { animation-delay:195ms; }
+.stagger-item:nth-child(5)  { animation-delay:242ms; }
+.stagger-item:nth-child(6)  { animation-delay:283ms; }
+.stagger-item:nth-child(7)  { animation-delay:318ms; }
+.stagger-item:nth-child(8)  { animation-delay:348ms; }
+.stagger-item:nth-child(n+9){ animation-delay:373ms; }
+
+/* Varian CONTAINER dari stagger-item di atas - SATU class di elemen pembungkus
+   list (mis. `divide-y` yang menampung hasil .map()), bukan di tiap baris.
+   Dipakai supaya tabel/daftar yang muncul (ganti tab, ganti filter, baru
+   dimuat) punya animasi masuk halus tanpa harus menyunting setiap pemanggilan
+   .map() satu per satu di semua tab Field Service/Teknisi/Dashboard - "harus
+   ada animasi bergerak sedikit ketika... menampilkan table" (permintaan
+   user). Animasi lebih SINGKAT (0.4s, translateY lebih kecil) daripada
+   stagger-item asli supaya tabel yang sering diklik-ulang tidak terasa
+   lambat. Efek sama, dipakai lewat cara berbeda - keyframe TIDAK diduplikasi. */
+@keyframes rowSlideUpSm {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+.stagger-rows > * { animation: rowSlideUpSm 0.4s ease-out both; }
+.stagger-rows > *:nth-child(1)  { animation-delay:  0ms; }
+.stagger-rows > *:nth-child(2)  { animation-delay: 30ms; }
+.stagger-rows > *:nth-child(3)  { animation-delay: 60ms; }
+.stagger-rows > *:nth-child(4)  { animation-delay: 90ms; }
+.stagger-rows > *:nth-child(5)  { animation-delay:120ms; }
+.stagger-rows > *:nth-child(6)  { animation-delay:150ms; }
+.stagger-rows > *:nth-child(7)  { animation-delay:180ms; }
+.stagger-rows > *:nth-child(n+8){ animation-delay:200ms; }
+@media (prefers-reduced-motion: reduce) {
+  .stagger-rows > * { animation: none; }
+}
+
+/* ── Page section entrance delay helpers ─────────────────────────────────── */
+/* Use alongside animate-slide-up / animate-zoom-in / animate-slide-down     */
+.anim-d0   { animation-delay:   0ms !important; }
+.anim-d80  { animation-delay:  80ms !important; }
+.anim-d160 { animation-delay: 160ms !important; }
+.anim-d240 { animation-delay: 240ms !important; }
+.anim-d320 { animation-delay: 320ms !important; }
+.anim-d400 { animation-delay: 400ms !important; }
+.anim-d480 { animation-delay: 480ms !important; }
+.anim-d560 { animation-delay: 560ms !important; }
+
+/* ── Zebra stripe — in @layer base so Tailwind bg-* utilities override it ── */
+@layer base {
+  .table-zebra tbody tr:nth-child(even) {
+    background-color: rgba(219, 234, 254, 0.38);
+  }
+  .table-zebra tbody tr:nth-child(odd) {
+    background-color: transparent;
+  }
+}
+
+/* ── Dashboard KPI + GlobalSearch animations ──────────────────────────────── */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes dropIn {
+  from { opacity: 0; transform: translateY(-12px) scale(0.97); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ── Overlay modal: selalu setinggi layar sebenarnya ───────────────────────
+   Berlaku untuk SELURUH modul, bukan per modul.
+
+   `fixed inset-0` mengukur diri terhadap containing block terdekat. Biasanya
+   itu viewport — tapi cukup satu leluhur ber-transform, filter, backdrop-filter,
+   atau will-change untuk mengubahnya jadi kotak leluhur tersebut. Ketika itu
+   terjadi, latar gelap modal berhenti di tengah layar dan kartunya ikut pendek,
+   berapa pun tinggi yang disetel di dalamnya.
+
+   Baris di bawah melepaskan overlay dari ketergantungan itu: tingginya diambil
+   langsung dari viewport, bukan dari kotak leluhur. dvh — bukan vh — supaya
+   bilah alamat browser HP tidak memotong bagian bawah.
+
+   Lebar SENGAJA tidak disetel. Percobaan sebelumnya memakai width:100vw, dan
+   itu keliru: 100vw menghitung lebar batang gulir sebagai bagian dari layar,
+   sehingga overlay jadi lebih lebar dari ruang yang ada dan memunculkan gulir
+   mendatar. `inset-0` sudah memberi lebar yang benar dengan sendirinya.
+
+   Sasarannya sempit — hanya elemen fixed inset-0 yang memang latar gelap modal
+   (punya kelas bg-black/…), sehingga overlay lain tidak ikut terpengaruh. */
+[class*="bg-black/"].fixed.inset-0,
+/* Sebagian overlay memasang latar lewat inline style, bukan kelas bg-black.
+   justify-center dipakai sebagai penanda: itu ciri backdrop yang memusatkan
+   kartu modal di dalamnya. Overlay hiasan tidak memusatkan apa pun, jadi tidak
+   ikut tersasar. */
+.fixed.inset-0.justify-center {
+  height: 100dvh;
+  max-height: 100dvh;
+}
+
+/* Overlay hiasan / penangkap klik yang sengaja tak berisi apa-apa dikecualikan,
+   supaya tidak ikut dipaksa setinggi layar. */
+.fixed.inset-0.pointer-events-none {
+  height: auto;
+  max-height: none;
+}
+
+/* ── Jaring pengaman: kartu modal tidak boleh melewati layar ───────────────
+   Menggantikan suntikan CSS yang dulu dipasang app/layout.tsx (lihat catatan
+   panjang di berkas itu). Yang lama memakai 85vh + !important dan hanya aktif
+   di dalam iframe, sehingga memaksa SETIAP modal berhenti di 85% tinggi layar
+   dan tidak bisa dilawan dari komponen mana pun.
+
+   Dua perbedaan yang membuat aturan ini aman:
+
+   1. :where() — kekhususannya NOL. Kelas apa pun di komponen (max-h-full,
+      max-h-96, overflow-hidden) maupun style inline otomatis menang. Jadi ini
+      benar-benar cadangan terakhir, bukan pemaksa.
+
+   2. 100dvh, bukan 85vh. Ia hanya menahan modal yang memang MELEBIHI layar,
+      dan tidak pernah menyisakan ruang kosong pada modal yang sudah pas.
+
+   overflow-y ikut disetel karena batas tinggi tanpa gulir hanya memindahkan
+   masalah: isinya terpotong dan tidak bisa dijangkau. */
+:where(.fixed.inset-0:not(.pointer-events-none)) > :where(*) {
+  max-height: 100dvh;
+  overflow-y: auto;
+}
+
+/* ── Animasi masuk halaman login ───────────────────────────────────────────
+   Lapisan ini hanya hidup di panel putih sebelah kanan. Panel merah, foto
+   latar, tata letak, logo, tipografi, tombol, dan isian form tidak disentuh. */
+
+/* Titik anchor animasi login berhasil (lc-dasbor-muncul di bawah).
+   Tengah layar — dulu dipatok ke posisi mulut koper 3D, sekarang cukup titik
+   tetap karena tidak ada lagi objek yang posisinya perlu diikuti. */
+:root { --lc-mulut-x: 50vw; --lc-mulut-y: 50vh; }
+
+/* ── Kartu login ── */
+.lc-kartu { position: relative; z-index: 5; }
+
+/* Kartu login meluncur dari BAWAH viewport ke posisi akhirnya di tengah panel
+   — entrance utama halaman login, jelas terlihat sejak bingkai pertama (bukan
+   efek halus yang menunggu animasi lain selesai). cubic-bezier di bawah
+   sengaja overshoot (back-ease): kartu sedikit melewati posisi akhir lalu
+   mapan, supaya gerakannya terasa mendarat, bukan meluncur lalu berhenti
+   mendadak. */
+.lc-kartu-masuk {
+  animation: lcKartuPopUp 1500ms cubic-bezier(.34, 1.56, .64, 1) both;
+}
+@keyframes lcKartuPopUp {
+  from { opacity: 0; transform: translateY(70vh) scale(0.94); }
+  55%  { opacity: 1; }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ── Tukar form: masuk ⇄ daftar ──
+   Dua tahap terpisah supaya pergantian isi kartu terjadi saat kartu sedang
+   tidak terlihat. Satu animasi bolak-balik tidak bisa: React mengganti isinya
+   pada saat diklik, bukan di tengah animasi. */
+.lc-tukar-keluar { animation: lcTukarKeluar 240ms cubic-bezier(.4, 0, 1, 1) forwards; }
+@keyframes lcTukarKeluar {
+  to { opacity: 0; transform: scale(.92) translateY(10px); }
+}
+.lc-tukar-masuk { animation: lcTukarMasuk 440ms cubic-bezier(.22, 1, .36, 1) backwards; }
+@keyframes lcTukarMasuk {
+  from { opacity: 0; transform: scale(.92) translateY(10px); }
+}
+
+/* ── Login berhasil: halaman DIBONGKAR, dashboard keluar dari satu titik ──
+   Keduanya sengaja animasi CSS murni, bukan digerakkan JavaScript per bingkai.
+   Sebabnya keselamatan: transform/clip-path yang tertinggal pada akar
+   dashboard akan menjadikannya containing block bagi seluruh modal
+   `fixed inset-0` di platform ini — persis akar bug modal yang dulu sudah
+   dicabut. Animasi di bawah memang berakhir dengan transform (`forwards`),
+   tapi HANYA pada halaman login, yang dilepas dari DOM begitu animasinya
+   selesai. Akar dashboard tidak pernah memakainya.
+
+   Yang lama menyusutkan seluruh halaman jadi satu titik ("dihisap"). Masalahnya
+   bukan cuma selera: menskalakan kotak SELUAS SATU LAYAR ke 3,5% membuat semua
+   teks di dalamnya melewati puluhan ukuran font dalam setengah detik, dan yang
+   terlihat adalah gumpalan yang meleot — bukan gerakan yang punya bentuk.
+
+   Gantinya: halamannya DIBONGKAR jadi bagian-bagiannya, berurutan seperti
+   membongkar sesuatu yang tadinya tersusun. Kartu form diangkat lebih dulu
+   (bagian yang paling atas), isi panel kiri lepas satu per satu, lalu kedua
+   panel terbelah ke arah berlawanan. Tiap bagian bergerak dalam ukuran
+   aslinya, jadi tidak ada yang meleot.
+
+   Total 1500ms, ditutup oleh panel yang terbelah (jeda 270ms + 1230ms).
+   Angka itu dicerminkan di setTimeout pada app/dashboard/page.tsx — kalau
+   durasi di sini diubah, angka di sana WAJIB ikut, kalau tidak halaman login
+   dilepas dari DOM di tengah gerakan. */
+
+/* Latar hanya memudar di ujung — kalau ikut memudar sejak awal, potongan-
+   potongannya sudah transparan sebelum sempat terlihat bergerak. */
+.lc-bongkar { animation: lcBongkarLatar 1500ms ease-in forwards; }
+@keyframes lcBongkarLatar {
+  0%, 62% { opacity: 1; }
+  100%    { opacity: 0; }
+}
+
+/* Kartu form — bagian teratas, dilepas duluan. */
+.lc-bongkar .lc-kartu {
+  animation: lcBongkarKartu 620ms cubic-bezier(.55, .06, .68, .19) forwards;
+}
+/* Kartu login MENYINGKIR KE KANAN, bukan ikut terbelah bersama panelnya.
+   Kartu itu bukan bagian dari bangunan halaman — ia benda yang diletakkan di
+   atasnya. Membiarkannya ikut terbelah membuat pembongkarannya kehilangan
+   makna: yang dibongkar seharusnya panelnya, bukan formulirnya.
+   Karena itu ia keluar DULUAN (620ms), baru panel mulai bergerak. */
+@keyframes lcBongkarKartu {
+  from { transform: none; opacity: 1; }
+  to   { transform: translateX(120%) rotate(3deg); opacity: 0; }
+}
+
+/* Isi panel kiri lepas satu per satu, sebelum panelnya sendiri bergeser. */
+.lc-bongkar-kiri > * {
+  animation: lcBongkarKeping 700ms cubic-bezier(.55, .06, .68, .19) both;
+}
+.lc-bongkar-kiri > *:nth-child(1) { animation-delay: 560ms; }
+.lc-bongkar-kiri > *:nth-child(2) { animation-delay: 680ms; }
+.lc-bongkar-kiri > *:nth-child(3) { animation-delay: 800ms; }
+@keyframes lcBongkarKeping {
+  from { transform: none; opacity: 1; }
+  to   { transform: translateX(-30px) translateY(12px); opacity: 0; }
+}
+
+/* Terakhir: kedua panel terbelah ke arah berlawanan. */
+.lc-bongkar-kiri  { animation: lcBongkarKiri   940ms cubic-bezier(.55, .06, .68, .19) 560ms forwards; }
+.lc-bongkar-kanan { animation: lcBongkarKanan  940ms cubic-bezier(.55, .06, .68, .19) 560ms forwards; }
+@keyframes lcBongkarKiri {
+  from { transform: none; }
+  to   { transform: translateX(-58%) skewX(7deg); opacity: 0; }
+}
+@keyframes lcBongkarKanan {
+  from { transform: none; }
+  to   { transform: translateX(58%) skewX(-7deg); opacity: 0; }
+}
+
+/* Dashboard tumbuh keluar dari mulut koper.
+   BUKAN transform: scale — itu percobaan pertama, dan hasilnya salah. Men-
+   scale kotak SELUAS SATU LAYAR dari titik di pinggir tidak terbaca sebagai
+   "tumbuh dari sebuah titik": yang terlihat mata adalah tepi-tepi kotak
+   berlari masuk dari arah titik itu, persis seperti "muncul dari kanan" —
+   bukan "keluar dari koper yang terbuka".
+   clip-path lingkaran yang melebar dari radius 0 di titik yang sama adalah
+   teknik yang benar untuk "terungkap dari satu titik": isi dashboard sudah
+   ada di tempatnya sejak bingkai pertama, hanya jendela bundar di sekitar
+   mulut koper yang membesar untuk menyingkapkannya — seperti cahaya yang
+   meluas dari lubang koper, bukan kotak yang melayang masuk. */
+.lc-dasbor-muncul {
+  /* BUKAN cubic-bezier(.22,1,.36,1) — kurva itu dipakai di tempat lain untuk
+     elemen kecil (kartu bergeser 14px) dan sangat "melesat di awal": diukur,
+     radius lingkaran ini sudah mencapai 52% diagonal layar dalam 21 milidetik
+     pertama. Mata tidak sempat melihatnya membesar — yang terlihat cuma
+     "tiba-tiba semua muncul", masih terbaca sebagai pop, bukan terungkap.
+     cubic-bezier(.4,0,.2,1) adalah kurva "standard easing" Material Design —
+     kurva yang sama dipakai Android untuk circular reveal transition, pola
+     yang persis ini. Naiknya lebih rata, jadi lingkarannya benar-benar
+     terlihat melebar selama animasi berjalan. */
+  animation: lcDasborMuncul 720ms cubic-bezier(.4, 0, .2, 1) backwards;
+}
+@keyframes lcDasborMuncul {
+  from { clip-path: circle(0 at var(--lc-mulut-x) var(--lc-mulut-y)); }
+  /* 150vmax: lebih besar dari jarak sudut manapun ke titik manapun di layar
+     (jarak terjauh yang mungkin ≈ 141vmax), jadi lingkarannya menutup seluruh
+     layar sampai ke ujung sekalipun mulut kopernya dekat sebuah sudut. */
+  to   { clip-path: circle(150vmax at var(--lc-mulut-x) var(--lc-mulut-y)); }
+}
+
+/* ── Hormati setelan perangkat ──
+   Gerak dikurangi: kartu langsung ada di tempatnya, tanpa animasi apa pun. */
+@media (prefers-reduced-motion: reduce) {
+  .lc-kartu-masuk,
+  .lc-tukar-keluar,
+  .lc-tukar-masuk,
+  .lc-bongkar,
+  .lc-bongkar .lc-kartu,
+  .lc-bongkar-kiri,
+  .lc-bongkar-kiri > *,
+  .lc-bongkar-kanan,
+  .lc-dasbor-muncul { animation: none; clip-path: none; }
+}
+
+/* Panel geser dari kanan - dipakai panel "Event → Kanal" di Integrations.
+   Dihormati prefers-reduced-motion: gerakan menyamping selebar layar adalah
+   jenis animasi yang paling mengganggu bagi yang sensitif terhadapnya. */
+@keyframes slide-in-right {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+.animate-slide-in-right { animation: slide-in-right 0.22s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .animate-slide-in-right { animation: none; }
+}

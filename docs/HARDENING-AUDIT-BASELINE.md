@@ -1,0 +1,179 @@
+# HARDENING AUDIT — BASELINE
+
+Dibuat menjawab `WORKMANAGEMENTHARDENINGPHASE.md` (diunggah 5 Sep 2026), Phase 0.
+
+**Hubungan dengan `docs/HARDENING-AUDIT.md`**: dokumen itu adalah log kerja
+untuk brief SERUPA (`PLATFORM_HARDENING___WORK_MANAGEMENT.md`, diunggah 30
+Agu 2026) dari sesi-sesi sebelumnya. Baseline ini TIDAK mengulang audit yang
+sudah dilakukan di sana - butir yang sudah dikonfirmasi bersih dibawa
+sebagai fakta, bukan diaudit ulang dari nol. Perbedaan penting: sesi
+sebelumnya secara eksplisit TIDAK punya akses langsung ke database produksi
+("konektor Supabase terhubung tapi tidak diaktifkan untuk chat ini") - sesi
+ini PUNYA akses itu (Supabase MCP), jadi beberapa open question di log lama
+sudah bisa dijawab pasti di sini, bukan lagi "sebaiknya diverifikasi".
+
+**Metodologi**: kombinasi (a) pemeriksaan langsung ke database produksi
+(`frxdbqcojaiosjoghdqk`) lewat Supabase MCP - baca `pg_policies`/`pg_class`/
+`pg_trigger`/`information_schema` dan simulasi eksploitasi lewat transaksi
+`ROLLBACK` (tidak menyentuh data nyata), dan (b) 4 subagent riset paralel
+yang membaca kode secara read-only. Setiap temuan subagent yang kontradiktif
+dengan temuan lain SUDAH di-cross-check manual sebelum dicatat di sini (lihat
+catatan di area Ticketing di bawah). Severity: P0 (kritis
+keamanan/integritas data), P1 (penting, produksi), P2 (kualitas/performa/UX),
+P3 (polish).
+
+---
+
+## MENJAWAB OPEN QUESTION DARI LOG LAMA
+
+**RLS benar-benar menyala di produksi?** YA, dikonfirmasi langsung: seluruh
+tabel di skema `public` (~60 tabel) punya `rls_enabled = true`. Tidak ada
+tabel dengan RLS mati. Ini menjawab pasti pertanyaan yang sebelumnya harus
+"ditanyakan ke Dhany atau dijalankan manual".
+
+**`/api/project-progress/share/[token]` mengirim nama staf internal
+(`audit_trail.user_name`) ke halaman publik tanpa login - disengaja atau
+bocor?** Ini BELUM terjawab - masih murni keputusan bisnis, bukan soal
+teknis. **Perlu jawaban Anda**: apakah nama staf yang menangani boleh
+terlihat klien eksternal di halaman share publik?
+
+---
+
+## RINGKASAN EKSEKUTIF
+
+Selama sesi ini, 7 celah keamanan NYATA ditemukan dan sudah diperbaiki +
+diverifikasi langsung di database produksi (lihat detail di bagian
+Security). Semua perbaikan hanya menambah syarat "harus login" atau "harus
+mengaku sebagai diri sendiri" - tidak ada satu pun alur bisnis yang diubah.
+2 temuan besar (storage bucket public, sesi tidak langsung tercabut saat
+privilege dicabut) sengaja BELUM disentuh - butuh keputusan/perencanaan,
+bukan tambalan tergesa.
+
+4 subagent riset menemukan total 45 temuan tambahan lintas seluruh platform
+(bukan keamanan RLS - lebih ke business-logic completeness, race condition,
+performa, dan konsistensi UI). Highlight yang paling relevan dengan tujuan
+bisnis Anda ("dijual ke perusahaan lain, semua harus bisa di-set"):
+**24 file di seluruh platform hardcode nama tim/perusahaan** (mis. "Team PTS
+IVP") langsung di business logic - ini bukan sekadar gaya kode, ini
+penghalang literal untuk menjual platform ini ke perusahaan lain tanpa fork
+kode.
+
+---
+
+## SECURITY (Phase 1) — SUDAH DIPERBAIKI SESI INI
+
+| # | Temuan | Severity awal saya laporkan | Severity SEBENARNYA (setelah verifikasi) | Status |
+|---|---|---|---|---|
+| 1 | `users` - 4 kolom lingkup data (`sales_division`,`divisi`,`pts_type`,`is_internal_sales`) belum dikunci trigger privilege-guard yang sudah ada | P0 (salah - lihat catatan) | P2 | ✅ Diperbaiki + dites |
+| 2 | `audit_trail` - INSERT tanpa syarat, bisa memalsukan pelaku | P1 | P1 | ✅ Diperbaiki + dites |
+| 3 | `activity_logs` - 2 policy INSERT tumpang tindih dari 2 era migrasi, satu masih terbuka | P1 | P1 | ✅ Diperbaiki + dites |
+| 4 | `incentive_splits` - INSERT tanpa syarat login ke tabel finansial paling sensitif | P1 | P1 | ✅ Diperbaiki + dites (lihat catatan lanjutan di bawah) |
+| 5 | `users_daftar` - policy pendaftaran anonim lama, sudah tidak dipakai | P2 | P2 | ✅ Dihapus |
+| 6 | `notifications` - UPDATE bisa memindahkan notifikasi ke user lain + ganti isi (phishing internal) | P2 | P2 | ✅ Dipecah per-perintah + dites |
+| 7 | 4 storage bucket - upload/hapus tanpa syarat login | P1 | P1 | ✅ Diperbaiki + dites |
+| 8 | Tech Note - author bisa meloloskan approval sendiri via `tn_ubah` (temuan Agent 2) | P1 | P1 | ✅ Diperbaiki + dites |
+| 9 | Learning Center - kunci jawaban quiz bocor ke browser + skor dihitung client (temuan Agent 2) | P1 | P1 | ✅ Diperbaiki (penilaian dipindah ke `/api/learning-center/submit-quiz`) |
+
+**Catatan penting soal #1**: laporan awal saya menyebut ini privilege-escalation
+P0 ("user bisa jadikan diri admin sendiri"). Setelah diperiksa lebih dalam,
+TERNYATA sudah ada trigger `trg_guard_users_privileged` dari sebelumnya yang
+sudah menutup jalur itu (role/access_level/full_name/dst sudah terkunci).
+Yang benar-benar jadi celah cuma 4 kolom lingkup data. Saya salah menyimpulkan
+severity dari membaca teks RLS saja tanpa cek trigger - dikoreksi ke user
+saat itu juga sebelum lanjut.
+
+**Catatan lanjutan #4** (dari Agent riset Incentive PTS, sesudah perbaikan
+saya): saat ini siapa pun yang SUDAH LOGIN bisa insert ke `incentive_splits`
+(saya tutup dari "siapa saja tanpa login" jadi "siapa saja yang login").
+Agent menyarankan penyempitan lebih lanjut: hanya pemegang
+`akses_insentif_input()` yang boleh insert (menyamakan dengan
+`it_tambah`/`it_ubah` di tabel `incentive_tranches`). Ini refinement yang
+masuk akal, **belum dikerjakan** - masuk daftar lanjutan di bawah.
+
+## SECURITY — DITEMUKAN, BELUM DIPERBAIKI (butuh keputusan)
+
+| Area | Temuan | Severity | Root Cause | Rekomendasi | Risiko |
+|---|---|---|---|---|---|
+| Storage (semua bucket) | Semua bucket storage bertanda `public` - file bisa dibaca siapa saja yang tahu URL, terlepas dari RLS `storage.objects` | P1 | Desain awal memilih public bucket + `<img src>` langsung ke `file_url` di seluruh app | Migrasi ke signed URL bertahap per modul | TINGGI - banyak titik pakai, regresi kalau tergesa |
+| Sesi/JWT | Privilege yang dicabut admin baru berlaku max ~5.5 jam kemudian (token direfresh lazy di 30 menit sebelum expiry) | P2 | Trade-off desain sesi 6 jam tanpa mekanisme revocation aktif | Perpendek ambang refresh (mis. 15 menit) sebagai mitigasi cepat; revocation list penuh sebagai perbaikan jangka panjang | RENDAH untuk mitigasi cepat, SEDANG untuk revocation list |
+| Incentive PTS | `incentive_splits` INSERT masih terbuka utk SEMUA user login, bukan hanya pemegang akses insentif (lihat catatan #4 di atas) | P2 | Belum disempitkan sejak perbaikan awal sesi ini | Gate dengan `akses_insentif_input()` seperti `it_tambah` | RENDAH kalau `processYearlyBatch` di UI memang sudah selalu dijalankan user yang punya akses itu (perlu 1x verifikasi) |
+| Ticketing | Race condition brand-BOTH: dua reviewer approve bersamaan bisa membuat request macet, tidak pernah sampai ke Admin (Agent 1, file+baris di laporan asli) | P1 | Client baca snapshot status sendiri-sendiri, tidak ada trigger DB yang menghitung ulang | Trigger `BEFORE UPDATE` di `project_requests`: set `routing_status='admin_review'` otomatis begitu kedua `internal_approved_at`/`internal_approved_at_2` terisi | RENDAH - aditif |
+| Ticketing | Approve tiket ke 2 handler berbeda oleh 2 admin bersamaan - tidak ada compare-and-swap di UPDATE, yang terakhir menang diam-diam (Agent 1) | P2 | Guard hanya di state UI (`uploading`), bukan di query | Tambah `.eq('status','Waiting Approval')` di update + cek row count | RENDAH - aditif |
+
+---
+
+## BUSINESS LOGIC / WORKFLOW (Phase 2) — TEMUAN AGENT RISET
+
+Detail lengkap tiap temuan (file:baris, root cause, fix, risiko) ada di 4
+laporan mentah subagent (tersimpan sebagai bagian riwayat sesi ini). Ringkasan
+per modul, P1 ke atas saja (P2/P3 lengkap tersedia bila diminta):
+
+**Ticketing/Reminder/Request Design/Project Progress** (Agent 1):
+- P1: Race condition brand-BOTH approval macet permanen (lihat tabel Security di atas - ini juga masalah data-integrity, bukan cuma keamanan).
+- P1: ~40 pesan WhatsApp di 3 modul hardcode domain `team-ticketing.vercel.app`/`work-management-ptsivp.vercel.app` langsung di teks pesan - masalah nyata untuk model bisnis jual-ke-perusahaan-lain.
+- P2: Tabel `JABATAN_TIER`/`JABATAN_CC_RULES` (aturan eskalasi jabatan) diduplikasi persis di 2 file - sudah rawan tidak sinkron.
+- P2: Approve tiket race condition (lihat tabel Security).
+- P2: Fetch error di Request Design Project ditelan diam-diam, tidak ada pesan error ke user.
+- P2: 3 file page.tsx raksasa (3.800-5.000 baris) - Ticketing, Reminder Schedule, Request Design Project.
+
+**Tech Note/Daily Report/Picket/Incentive PTS/Learning Center** (Agent 2):
+- P1: Tech Note self-approval RLS gap (lihat tabel Security).
+- P1: Learning Center jawaban kuis bisa dimanipulasi (lihat tabel Security).
+- P1→P2 (sudah sebagian ditutup): Incentive splits insert terbuka (lihat catatan #4).
+- P2: `daily_report_team_entries` delete-then-insert tidak cek row-count hasil delete, padahal komentarnya sendiri menyebut risiko RLS diam-diam menolak.
+- P2: Persentase skema insentif (harus total 100%) cuma divalidasi di form React, tidak ada CHECK constraint di database.
+- P3: Fungsi `getSupervisorTeamForPic()` mati (tidak dipanggil di mana pun) yang hardcode nama karyawan asli - aman dihapus.
+
+**Dashboard/Analytics/Search/Admin/Notifikasi** (Agent 3):
+- **Global Search sudah aman** - filter lingkup dilakukan di level query (bukan di client), sudah diverifikasi, tidak perlu tindakan.
+- P1→P2 (dikoreksi manual): status "Overdue" tiket TIDAK PERNAH dihitung ulang oleh server (cron yang ada hanya kirim notifikasi WA eskalasi, tidak update kolom status) - murni bergantung tab browser admin yang kebetulan terbuka. Saya verifikasi langsung ke `app/api/cron/escalate/route.ts` - benar tidak ada `.update(status)`.
+- P2: Dashboard menghitung "Reminder Overdue" tapi halaman Reminder Schedule sendiri tidak punya konsep/filter "overdue" - user tidak bisa memverifikasi angka itu dari sumbernya.
+- P2: `ref_id` di setiap notifikasi disimpan tapi tidak pernah dipakai untuk deep-link ke record spesifik - klik notifikasi cuma buka daftar modul.
+- P2: 2 sistem realtime (NotificationBar + Command Center) sama-sama refetch SEMUA data pada SETIAP perubahan, bisa dobel-fetch bersamaan.
+- P2: `DashboardKPI.tsx` ada 2 versi (dashboard vs kpi-team) yang sudah bercabang beda field.
+
+**Shared components/Responsive/Accessibility/Code Quality** (Agent 4):
+- P1: `Modal.tsx` (dipakai hampir semua popup) tidak punya focus-trap - Tab bisa lompat ke konten di belakang overlay.
+- P1: `ConfirmDialog.tsx` (63+ titik pakai) tidak punya Escape/scroll-lock/focus-management sama sekali, beda standar dari `Modal.tsx`.
+- **P1: 24 file hardcode nama tim/perusahaan langsung di business logic** - lihat highlight di ringkasan eksekutif. Ini yang paling relevan untuk rencana jual-ke-perusahaan-lain.
+- P1: Modal "KPI Settings" ter-copy-paste di 2 tempat (kpi-team page vs component), sudah bercabang beda styling.
+- P2: Status badge (warna/label yang sama) diimplementasikan ulang di tiap modul, bukan 1 komponen shared - warna "done"/"pending" beda-beda hex di tiap layar.
+- P2: 2 komponen berbeda total sama-sama bernama `DashboardKPI` di folder berbeda - jebakan untuk IDE/import.
+- Tidak ditemukan indikator status warna-saja tanpa teks/ikon pendamping - area ini sudah baik.
+
+---
+
+## PERFORMANCE (Phase 5) — dari Agent 3
+
+- Command Center + Notification Bar sama-sama polling (30 detik & 2 menit) + berlangganan realtime penuh secara terpisah - kandidat pengurangan egress Supabase.
+- Admin Panel user list fetch seluruh tabel `users` tanpa pagination (aman di skala sekarang, akan jadi masalah kalau jumlah user bertambah banyak - relevan untuk rencana multi-perusahaan).
+- Audit Log tab menarik 600 baris (`audit_trail`+`activity_logs`) penuh lalu filter di client, bukan filter di query.
+
+---
+
+## LANJUTAN YANG DISARANKAN (urutan prioritas)
+
+1. ~~Jawab open question halaman share publik~~ - **selesai**: dikonfirmasi disengaja, tidak diubah.
+2. ~~Tutup 2 celah security P1 baru~~ - **selesai**: Tech Note self-approval (trigger) & Learning Center integritas kuis (penilaian dipindah ke server), keduanya diverifikasi.
+3. ~~Perbaiki race condition brand-BOTH~~ - **selesai**: trigger DB, diverifikasi.
+4. ~~Race condition approve tiket 2 admin~~ - **selesai**: compare-and-swap + cek row count.
+5. ~~Perketat incentive_splits INSERT~~ - **selesai**: disamakan dengan incentive_tranches (akses_insentif_input()).
+6. ~~Konsolidasi JABATAN_TIER/CC_RULES (4 salinan → 1)~~, ~~cek row-count daily report~~, ~~hapus dead code~~ - **selesai**.
+7. ~~Galat fetch yang ditelan diam-diam~~ (Request Design Project, Tech Note) - **selesai**: ErrorState + notify.
+8. ~~Notifikasi deep-link ke record spesifik~~ (ref_id) - **selesai**: 4 halaman tujuan disambungkan.
+9. ~~Domain hardcode di 47 pesan WA~~ - **selesai**: lib/app-url.ts (window.location.origin di browser, NEXT_PUBLIC_APP_URL di server).
+10. **Hardcode nama tim/perusahaan (21 file)** - DICEK LEBIH DALAM, TERNYATA LEBIH BESAR dari perkiraan awal: bukan sekadar string yang bisa diganti (mis. `app/kpi-team/page.tsx` punya kolom TERPISAH per tim - `pic_ivp_name`/`pic_ump_name`/`pic_mvi_name` - nama tim sudah tertanam di level SKEMA DATABASE, bukan cuma di kode). Membenarkannya perlu redesain skema (mis. satu kolom `pic_by_team` JSONB generik), bukan refactor string. Konsisten dengan Phase 19 dokumen asli sendiri ("JANGAN memaksakan multi-tenant migration sekarang... buat architecture roadmap") - **sengaja tidak dikerjakan sesi ini**, didokumentasikan di sini sebagai roadmap, bukan ditebak/dipaksakan.
+    - Catatan baik: modul assignment inti (Reminder Schedule/Ticketing/Request Design Project) SUDAH memakai sistem "Kelompok" yang benar (`lib/kelompok.ts`, dibaca dari database, bisa diatur dari Admin Panel tanpa deploy) - gap-nya ada di modul LAIN (KPI Team, Unit Movement, Incentive PTS, Picket Showroom, beberapa bagian Dashboard) yang belum ikut memakai sistem itu.
+11. ~~Accessibility Modal/ConfirmDialog~~ - **selesai**: focus-trap Tab/Shift+Tab (mengunci fokus di dalam dialog, ikut aturan "hanya yang paling atas di tumpukan" seperti Esc) ditambahkan di `Modal.tsx`; `ConfirmDialog.tsx` di-rebuild total (sebelumnya nol penanganan Esc/scroll-lock/focus) di atas mesin tumpukan+kunci-gulir+jebakan-fokus YANG SAMA dari `Modal.tsx` (diekspor, bukan diduplikasi) supaya keduanya benar juga saat bertumpuk campuran. API (`ConfirmState`, props `state`/`onCancel`) tidak berubah, seluruh 63+ titik pakai tetap jalan tanpa perubahan.
+12. ~~Duplikasi modal KPI Settings & nama komponen DashboardKPI ganda~~ - **selesai**: `app/kpi-team/_components/DashboardKPI.tsx` (dipakai Analytics Dashboard) sebelumnya punya SALINAN SENDIRI `interface KPISettings` + `DEFAULT_KPI_SETTINGS` + (di tombol Reset Default) salinan KETIGA nilai default yang sama, terpisah dari sumber asli di `app/kpi-team/_components/shared.ts` - risiko nyata: kalau default KPI pernah diubah di satu tempat, dua salinan lain diam-diam jadi tidak sinkron. Sekarang ketiganya memakai satu sumber yang sama (import dari `shared.ts`). Terpisah dari itu, `app/dashboard/_components/DashboardKPI.tsx` (nama sama, isi beda total, dan sumber kebingungan IDE yang dicatat agent) ternyata FILE MATI - diverifikasi tidak ada satu pun yang meng-impornya di seluruh repo (dashboard memakai `AnalyticsPlatform` yang me-render `kpi-team/_components/DashboardKPI.tsx`, bukan file ini) - dihapus.
+13. **Sisanya - DICEK, SENGAJA TIDAK DIKERJAKAN sesi ini (butuh keputusan produk/QA visual, bukan sekadar refactor):**
+    - **StatusBadge & MiniDonut/Sparkline/StatCard duplikat** (P2) - dicek langsung: bukan salinan identik yang aman digabung begitu saja. `StatusBadge` tiap modul (Tech Note/Reminder/Learning Center) memang punya vokabuler status BERBEDA (bukan status yang sama digambar ulang). `StatCard` versi `kpi-team/_components/DashboardKPI.tsx` (kartu glass dengan donut/sparkline tertanam) beda desain total dari `components/shared/StatCard.tsx` (kartu flat, tanpa chart tertanam) - menyatukannya adalah keputusan desain visual, bukan cuma hapus duplikat kode, dan saya tidak punya cara mem-verifikasi hasilnya di browser sungguhan di sesi ini. Berisiko mengubah tampilan yang dipakai tim tiap hari tanpa QA visual - **melanggar aturan "no blind coding" di brief ini sendiri kalau dipaksakan**.
+    - **Command Center + Notification Bar realtime dobel** (P2) - dikonfirmasi nyata: `AnalyticsPlatform.tsx` (Command Center, poll 30 detik + subscribe `tickets`/`reminders`/`project_requests`) dan `modal-notifikasi.tsx` (Notification Bar, poll 2 menit + subscribe 3 tabel yang SAMA + `form_reviews`+`notifications`) jalan independen, jadi satu perubahan tiket bisa memicu 2 query paralel. Tapi keduanya menghitung data BEDA (statistik KPI vs daftar notifikasi) - bukan fetch identik yang bisa dihapus salah satu, perlu event-bus/context bersama supaya 1 event Realtime dipakai ulang oleh kedua konsumen. Perubahan arsitektur realtime lintas komponen berisiko tinggi kalau tidak diuji langsung (badge notifikasi/alert bisa diam-diam berhenti update) - didokumentasikan sebagai roadmap, bukan dikerjakan blind.
+    - **Reminder Overdue dashboard vs halaman sumbernya** (P2) & **status "Overdue" tiket murni dihitung di client** (tidak ada job server yang set kolomnya) - keduanya butuh KEPUTUSAN PRODUK (tambah filter/konsep "overdue" resmi di halaman Reminder Schedule; tambah cron yang benar-benar mengubah `tickets.status`), bukan bug yang bisa langsung diperbaiki tanpa mengubah perilaku yang terlihat user.
+    - **Storage public-bucket → signed URL** (P1) & **JWT/sesi staleness saat privilege dicabut** (P2) - sudah diflag sejak awal, keduanya perlu rencana migrasi eksplisit (signed URL mengubah cara semua tautan gambar/file dibangun; invalidasi sesi butuh keputusan trade-off UX vs keamanan) - menunggu arahan/prioritas dari user, bukan dikerjakan tanpa persetujuan.
+
+Dokumen ini TIDAK mencakup Phase 4 (Race Condition mendalam di luar yang
+ditemukan), Phase 8 (Accessibility penuh - baru sampel), Phase 13 (Testing),
+Phase 17 (Deployment), Phase 19 (Commercial readiness) secara menyeluruh -
+scope Phase 0 ini fokus ke Security + gambaran besar Business
+Logic/Performance/UI sesuai urutan brief ("Mulai dari PHASE 0").

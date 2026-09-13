@@ -1,0 +1,7 @@
+{
+  "buildCommand": "npm run build",
+  "framework": "nextjs",
+  "crons": [
+    { "path": "/api/cron/materialize-instances", "schedule": "0 0 * * *" }
+  ]
+}

@@ -1,0 +1,105 @@
+name: Build Android APK
+
+# Manual dispatch, bukan tiap push - penomoran versi (version_name) harus
+# keputusan sadar, bukan angka yang berubah sendiri setiap commit.
+#
+# Kenapa lewat GitHub Actions dan bukan sandbox Claude: sandbox itu memblokir
+# dl.google.com (host Android SDK/repository), jadi APK tidak bisa di-compile
+# di sana sama sekali. Runner GitHub Actions punya akses internet penuh -
+# android-actions/setup-android di bawah mengunduh SDK dari host yang sama itu
+# tanpa masalah.
+on:
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: 'Nama versi, mis. 1.0.0'
+        required: true
+      changelog:
+        description: 'Catatan perubahan (opsional)'
+        required: false
+        default: ''
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Sync Capacitor Android project
+        run: npx cap sync android
+
+      # version_code HARUS naik terus tiap rilis (dipakai Android untuk
+      # menentukan update lebih baru atau lebih lama) - run_number GitHub
+      # Actions sudah begitu secara alami, jadi tidak perlu disimpan manual
+      # di tempat lain.
+      - name: Resolve version code
+        id: ver
+        run: echo "code=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
+      - name: Decode signing keystore (kalau ada)
+        id: signing
+        run: |
+          if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
+            echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            echo "has_signing=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_signing=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build release APK (signed)
+        if: steps.signing.outputs.has_signing == 'true'
+        working-directory: android
+        env:
+          KEYSTORE_PATH: ${{ runner.temp }}/release.keystore
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease -PversionCode=${{ steps.ver.outputs.code }} -PversionName=${{ github.event.inputs.version_name }}
+
+      # Tanpa ANDROID_KEYSTORE_BASE64 (belum di-setup), release build TIDAK
+      # bisa dipakai (unsigned APK ditolak Android saat install) - jatuh ke
+      # debug build yang otomatis ditandatangani kunci debug bawaan Android,
+      # cukup untuk testing/demo, TIDAK untuk distribusi produksi sungguhan.
+      - name: Build debug APK (belum ada keystore rilis)
+        if: steps.signing.outputs.has_signing == 'false'
+        working-directory: android
+        run: ./gradlew assembleDebug -PversionCode=${{ steps.ver.outputs.code }} -PversionName=${{ github.event.inputs.version_name }}
+
+      - name: Locate APK
+        id: apk
+        run: |
+          if [ "${{ steps.signing.outputs.has_signing }}" == "true" ]; then
+            path=$(find android/app/build/outputs/apk/release -name '*.apk' | head -1)
+          else
+            path=$(find android/app/build/outputs/apk/debug -name '*.apk' | head -1)
+          fi
+          echo "path=$path" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: field-service-${{ github.event.inputs.version_name }}.apk
+          path: ${{ steps.apk.outputs.path }}
+
+      - name: Kirim ke Admin Panel (app_releases)
+        if: ${{ secrets.APP_URL != '' && secrets.APK_RELEASE_SECRET != '' }}
+        run: |
+          curl -sS -f -X POST "${{ secrets.APP_URL }}/api/app-releases" \
+            -H "x-release-secret: ${{ secrets.APK_RELEASE_SECRET }}" \
+            -F "version_name=${{ github.event.inputs.version_name }}" \
+            -F "version_code=${{ steps.ver.outputs.code }}" \
+            -F "changelog=${{ github.event.inputs.changelog }}" \
+            -F "apk=@${{ steps.apk.outputs.path }}"
