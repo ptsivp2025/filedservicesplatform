@@ -163,8 +163,37 @@ export function Masonry({ children, columns = 3, minColumnWidth = 260, gap = 12,
     });
 
     const hasilBaru: Layout = { posisi: posisiBaru, tinggi: Math.max(0, tinggiMaks), siap: true };
+
+    // JEBAKAN #3 (ditemukan setelah JEBAKAN #2 "diperbaiki" tapi kartu
+    // MASIH terjebak di tinggi alami saat diuji ulang): baris paling atas
+    // fungsi ini me-reset `style.height` LEWAT DOM LANGSUNG supaya
+    // pengukuran jujur (JEBAKAN #1). Reset itu SUNGGUHAN mengubah DOM saat
+    // itu juga. Kalau setelah dihitung ternyata hasilnya SAMA dengan yang
+    // sudah tersimpan (JEBAKAN #2 bilang "lewati setLayout, tidak perlu
+    // render ulang") - reset yang baru saja terjadi TIDAK PERNAH dikembalikan,
+    // karena satu-satunya kode yang mengembalikan tinggi regangan adalah
+    // style React lewat re-render, dan render ulang itu justru yang kita
+    // lewati! Akibatnya kartu nyangkut di tinggi alami (reset) meski
+    // `layout` React "mengira" tingginya sudah benar. Makanya di sini
+    // tinggi/posisi HASIL AKHIR selalu dipasang ulang langsung ke DOM
+    // (idempoten - kalau nilainya sudah sama seperti sekarang, browser
+    // tidak menganggap ini perubahan ukuran, jadi tidak memicu
+    // ResizeObserver lagi) - TERLEPAS dari apakah kita juga memanggil
+    // setLayout. setLayout sendiri jadi murni optimasi (hindari render
+    // React yang tidak perlu), bukan satu-satunya jalan DOM jadi benar.
+    keys.forEach(kunci => {
+      const el = itemRefs.current.get(kunci);
+      const pos = posisiBaru.get(kunci);
+      if (!el || !pos) return;
+      el.style.top = `${pos.top}px`;
+      el.style.left = `${pos.left}px`;
+      el.style.width = `${pos.width}px`;
+      el.style.height = pos.height != null ? `${pos.height}px` : '';
+    });
+
     // Lihat komentar "JEBAKAN #2" di atas berkas ini - inilah yang memutus
-    // lingkaran ResizeObserver-memicu-dirinya-sendiri.
+    // lingkaran ResizeObserver-memicu-dirinya-sendiri (untuk state React-nya
+    // saja - DOM sudah benar lewat blok di atas terlepas dari ini).
     if (layoutRef.current.siap && layoutSama(layoutRef.current, hasilBaru)) return;
     layoutRef.current = hasilBaru;
     setLayout(hasilBaru);

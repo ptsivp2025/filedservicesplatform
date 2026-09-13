@@ -41,14 +41,23 @@ export function SectionHeader({ icon, title }: { icon: string; title: string }) 
   );
 }
 
-export function SectionHeaderSmall({ icon, title, warna = '#94a3b8' }: { icon: string; title: string; warna?: string }) {
-  // warna default (abu terang) dirancang untuk duduk di atas kartu PUTIH -
-  // dipakai lagi langsung di atas gradasi maroon/pink (Dashboard, section
-  // "Ringkasan"/"Progres"/dst) jadi nyaris tidak terbaca (dilaporkan user
-  // via screenshot). Pemanggil di latar gelap WAJIB mengoper `warna` yang
-  // kontras (mis. putih), bukan mengandalkan default ini.
+export function SectionHeaderSmall({ icon, title, warna = '#94a3b8', chip }: {
+  icon: string; title: string; warna?: string;
+  /** Latar belakang chip gelap semi-transparan di bawah teks - WAJIB dipakai
+   *  kalau heading ini duduk LANGSUNG di atas gradasi (bukan di dalam kartu
+   *  putih). Percobaan pertama cuma mengganti `warna` jadi putih ternyata
+   *  TIDAK CUKUP (dilaporkan user via screenshot kedua): gradasi diagonal
+   *  Dashboard berubah dari terang ke gelap sepanjang halaman, jadi satu
+   *  warna teks tetap tidak kontras di bagian yang kebetulan terang -
+   *  tidak ada satu warna teks pun yang aman di SEMUA titik gradasi. Chip
+   *  gelap solid di belakang teks menjamin kontras di mana pun heading ini
+   *  ditaruh, karena warna latar di BAWAH teks selalu sama (bukan ikut
+   *  warna gradasi di titik itu). */
+  chip?: boolean;
+}) {
   return (
-    <p className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5" style={{ color: warna }}>
+    <p className={`text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 w-fit ${chip ? 'px-2 py-1 rounded-md' : ''}`}
+      style={{ color: warna, background: chip ? 'rgba(30,27,46,0.45)' : undefined }}>
       <span aria-hidden="true">{icon}</span>{title}
     </p>
   );

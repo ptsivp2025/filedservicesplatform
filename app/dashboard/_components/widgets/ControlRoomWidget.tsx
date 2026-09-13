@@ -492,7 +492,7 @@ export function ControlRoomWidget({ user }: WidgetProps) {
               dirancang untuk latar putih, dan section ini duduk langsung di
               atas gradasi maroon/pink widget (bukan di dalam kartu putih) -
               nyaris tak terbaca dengan abu (dilaporkan user via screenshot). */}
-          <SectionHeaderSmall icon="📊" title="Ringkasan" warna="#ffffff" />
+          <SectionHeaderSmall icon="📊" title="Ringkasan" warna="#ffffff" chip />
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5">
             <UbinKpi ikon={Tv} label="Total TV" nilai={overview.total_tv} warna={C.primer}
               sub={`${overview.building_total} gedung · ${overview.region_total} wilayah`} />
@@ -625,8 +625,14 @@ export function ControlRoomWidget({ user }: WidgetProps) {
                      langsung, masing-masing dengan `key` eksplisit supaya
                      identitasnya stabil walau "Perlu Perhatian"/"Progres
                      per PIC" kadang tidak dirender (render kondisional). */}
-              <SectionHeaderSmall icon="📈" title="Progres" warna="#ffffff" />
-              <Masonry columns={3} minColumnWidth={280} gap={12}>
+              <SectionHeaderSmall icon="📈" title="Progres" warna="#ffffff" chip />
+              {/* 4 kolom (bukan 3) - section ini tepat berisi 4 kartu, jadi
+                  4 kolom berarti tiap kartu dapat kolomnya sendiri (bukan
+                  ditumpuk), lebih ringkas secara vertikal (diminta user:
+                  "menghemat penglihatan"). minColumnWidth diturunkan supaya
+                  tetap otomatis mundur ke 3/2/1 kolom di layar yang lebih
+                  sempit, bukan memaksa 4 kolom sempit yang tidak muat. */}
+              <Masonry columns={4} minColumnWidth={230} gap={12}>
                 <Kartu key="progres-siklus">
                   <JudulPanel ikon={Activity} judul="Progres Siklus"
                     ket="Persentase TV yang benar-benar terpasang" />
@@ -753,8 +759,10 @@ export function ControlRoomWidget({ user }: WidgetProps) {
                 </Kartu>
               </Masonry>
 
-              <SectionHeaderSmall icon="🔍" title="Analisis Masalah" warna="#ffffff" />
-              <Masonry columns={3} minColumnWidth={280} gap={12}>
+              <SectionHeaderSmall icon="🔍" title="Analisis Masalah" warna="#ffffff" chip />
+              {/* 4 kolom - sama seperti section Progres, section ini juga
+                  tepat 4 kartu. */}
+              <Masonry columns={4} minColumnWidth={230} gap={12}>
                 <Kartu key="komposisi-status-tv">
                   <JudulPanel ikon={Tv} judul="Komposisi Status TV"
                     ket="Klik salah satu untuk melihat daftar TV-nya" />
@@ -855,7 +863,7 @@ export function ControlRoomWidget({ user }: WidgetProps) {
 
               {pics.length > 0 && (
                 <>
-                  <SectionHeaderSmall icon="👥" title="Tim / PIC" warna="#ffffff" />
+                  <SectionHeaderSmall icon="👥" title="Tim / PIC" warna="#ffffff" chip />
                   <Kartu padat>
                     <div className="px-3.5 pt-3">
                       <JudulPanel ikon={Users} judul="Progres per PIC"
