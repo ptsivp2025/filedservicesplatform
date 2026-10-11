@@ -8,12 +8,12 @@ import { isAdmin as checkIsAdmin, hasFullAccess, SESSION_DURATION_MS } from '@/l
 import {
   User, MenuItem, NotificationItem,
   ALL_MENU_KEYS, ALL_MENU_LABELS, ROLE_BADGE,
-  AdminPanelModalProps,
 } from './_components/shared';
 import {
   UserProfileModal,
-  AdminPanelModal,
+  AdminPanelHalaman,
 } from './_components/Modals';
+import { BAGIAN_ADMIN, URUTAN_KELOMPOK_ADMIN, type SeksiAdmin } from './_components/admin-bagian';
 import PermissionAwareDashboard from './_components/widgets/PermissionAwareDashboard';
 import { HeaderKanan } from './_components/HeaderKanan';
 import OnboardingTour, { JelajahiButton } from './_components/OnboardingTour';
@@ -137,7 +137,6 @@ export default function Dashboard() {
   const [iframeTitle, setIframeTitle] = useState<string>('');
   const [showTicketing, setShowTicketing] = useState(false);
   const [internalUrl, setInternalUrl] = useState<string>('/ticketing');
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
 
   /**
@@ -157,7 +156,7 @@ export default function Dashboard() {
   });
 
   const [showAdminPanel, setShowAdminPanel] = useState(false);
-  const [adminPanelTab, setAdminPanelTab] = useState<'settings' | 'integrasi' | 'projects'>('settings');
+  const [adminPanelTab, setAdminPanelTab] = useState<SeksiAdmin>('settings');
   /**
    * Dua antrean yang menunggu tindakan admin, sengaja DIPISAH karena
    * diselesaikan di tempat berbeda: pendingUsers di Admin Panel > User
@@ -223,7 +222,10 @@ export default function Dashboard() {
         // Lokasi & konten adalah master data yang melayaninya.
         { name: 'Siklus & Riwayat', url: '/field-service?tab=cycles', icon: '🗓️', internal: true },
         { name: 'Locations', url: '/field-service?tab=locations', icon: '📍', internal: true },
-        { name: 'Content', url: '/field-service?tab=content', icon: '🖼️', internal: true },
+        // Content sengaja TIDAK lagi jadi menu: siklus mingguan berjalan
+        // otomatis di hari yang dipilih Admin tanpa harus memilih konten
+        // dulu - fokusnya melacak orang, jadwal, dan evidence. Data konten
+        // lama tetap tersimpan di database.
       ],
     },
     {
@@ -466,6 +468,7 @@ export default function Dashboard() {
   const handleMenuClick = (item: MenuItem['items'][0], menuTitle: string) => {
     if (item.external && !item.embed) { window.open(item.url, '_blank'); return; }
     setMobileMoreOpen(false); // close overlay on mobile
+    setShowAdminPanel(false);
     setIframeUrl(null); setShowTicketing(false); setInternalUrl('/ticketing'); setShowDashboardPanel(false);
     setIframeLoading(true);
     setTimeout(() => {
@@ -478,6 +481,17 @@ export default function Dashboard() {
         setIframeTitle(`${menuTitle} - ${item.name}`);
       }
     }, 150);
+  };
+
+  // Admin Panel kini HALAMAN di area isi (pola Sales), bukan modal - menu
+  // lain dimatikan supaya sidebar hanya menandai satu tempat aktif.
+  const bukaAdminPanel = (tab: SeksiAdmin = 'settings') => {
+    setMobileMoreOpen(false);
+    setAdminPanelTab(tab);
+    setShowAdminPanel(true);
+    setShowSidebar(true);
+    setShowDashboardPanel(false);
+    setIframeUrl(null); setShowTicketing(false);
   };
 
   // Buka menu berdasarkan key (dipakai widget dashboard: Quick Action, "Lihat semua").
@@ -510,8 +524,7 @@ export default function Dashboard() {
     // "admin:<tab>" sengaja BUKAN route sungguhan, dikenali khusus di sini.
     if (navInternalUrl.startsWith('admin:')) {
       const tab = navInternalUrl.slice('admin:'.length);
-      if (tab === 'settings' || tab === 'integrasi') setAdminPanelTab(tab);
-      setShowAdminPanel(true);
+      bukaAdminPanel(BAGIAN_ADMIN.some(b => b.kunci === tab) ? (tab as SeksiAdmin) : 'settings');
       return;
     }
     // Deep-link: ?open=<id record> supaya halaman tujuan bisa langsung
@@ -713,6 +726,20 @@ export default function Dashboard() {
   const semuaMenuItemMobile = visibleMenuItems.flatMap(menu => menu.items.map(item => ({ menu, item })));
   const mobilePrimaryItems = semuaMenuItemMobile.slice(0, MOBILE_NAV_CAP);
   const mobileOverflowItems = semuaMenuItemMobile.slice(MOBILE_NAV_CAP);
+
+  // Kelompok sidebar disusun menurut PEKERJAAN (pola Sales Management
+  // Platform), bukan menurut kunci modul. Kelompok Project/Learning memakai
+  // judul menu karena kategori itu berisi satu item per menu.
+  const KELOMPOK_SIDEBAR: { label: string; keys: string[]; denganBeranda?: boolean; pakaiJudulMenu?: boolean }[] = [
+    { label: 'Kerja Harian', keys: TEKNISI_KEYS, denganBeranda: true },
+    { label: 'Operasional', keys: FIELD_SERVICE_KEYS },
+    { label: 'Review Client', keys: CLIENT_REVIEW_KEYS },
+    { label: 'Project', keys: PROJECT_KEYS, pakaiJudulMenu: true },
+    { label: 'Internal Daily', keys: INTERNAL_DAILY_KEYS },
+    { label: 'Learning', keys: LEARNING_KEYS, pakaiJudulMenu: true },
+  ];
+  const menuAktif = (item: MenuItem['items'][0]) =>
+    !showAdminPanel && !showDashboardPanel && ((showTicketing && Boolean(item.internal) && internalUrl === item.url) || iframeUrl === item.url);
 
   useEffect(() => {
     if (!bisaPilihFsProject || !currentUser) return;
@@ -1180,105 +1207,64 @@ export default function Dashboard() {
     );
   }
 
-  // SHARED HEADER JSX
-  const renderHeader = (withBackBtn = false) => (
-    <div className="bg-white/80 backdrop-blur-md shadow-md flex-shrink-0" style={{ borderBottom: '1px solid rgba(0,0,0,0.08)', position: 'relative', zIndex: 50 }}>
-      <div className="w-full px-3 md:px-4 py-3 md:py-3.5">
-        <div className="flex items-center justify-between gap-2 md:gap-4">
-          {/* LEFT: Logo */}
-          <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
-            <LogoMerek ukuran="sm" className="md:hidden" />
-            <LogoMerek ukuran="md" className="hidden md:flex" />
-            <div>
-              <div className="flex items-center gap-1.5 md:gap-2.5">
-                <h1 className="text-sm md:text-xl font-bold text-slate-800 tracking-tight leading-tight">
-                  <span className="hidden sm:inline">{merek.namaPlatform}</span>
-                  <span className="sm:hidden">{merek.namaPlatformSingkat}</span>
-                </h1>
-                <span className="hidden sm:inline text-slate-300 font-light">|</span>
-                <span className="hidden sm:inline text-xs md:text-sm font-bold tracking-wide" style={{ color: merek.warnaAksen }}>{merek.namaPortal}</span>
-              </div>
-              <p className="text-slate-500 text-[10px] md:text-xs font-medium mt-0.5 hidden sm:block">{merek.namaPerusahaan}</p>
-            </div>
-          </div>
+  // Header pola Sales Management Platform: bilah putih setinggi 56px yang
+  // membentang penuh DI ATAS sidebar - identitas platform di kiri, konteks
+  // siklus + lonceng + avatar di kanan. Sama di setiap halaman, termasuk di
+  // ponsel saat sidebar tidak ada.
+  const renderHeader = () => (
+    <header className="sticky top-0 z-50 flex-shrink-0 bg-white/95 backdrop-blur border-b border-slate-200">
+      <div className="px-3 sm:px-5 h-14 flex items-center gap-3">
+        <button type="button"
+          onClick={() => { if (showSidebar) { setShowAdminPanel(false); setShowDashboardPanel(true); setShowTicketing(false); setIframeUrl(null); } }}
+          className="flex items-center gap-2.5 min-w-0 flex-shrink-0 text-left">
+          <LogoMerek ukuran="sm" />
+          <span className="min-w-0 hidden sm:block">
+            <span className="block text-[14px] sentuhlebar:text-[16px] font-black text-slate-900 leading-tight truncate">
+              {merek.namaPlatform}
+              {merek.namaPortal && (
+                <span className="font-bold ml-1.5" style={{ color: merek.warnaAksen }}>{merek.namaPortal}</span>
+              )}
+            </span>
+            <span className="block text-[10px] sentuhlebar:text-[12px] text-slate-400 leading-tight truncate">
+              {merek.namaPerusahaan || 'Platform internal'}
+            </span>
+          </span>
+          <span className="sm:hidden text-[13px] font-black text-slate-900 truncate">
+            {merek.namaPlatformSingkat || merek.namaPlatform}
+          </span>
+        </button>
 
-          {/* CENTER — spacer */}
-          <div className="flex-1" />
+        <div className="flex-1" />
 
-          {/* RIGHT */}
-          <div className="flex items-center gap-1.5 md:gap-2 flex-shrink-0">
-            {/* Konteks siklus + lonceng notifikasi. Sebelumnya sudut ini
-                kosong sama sekali dalam mode sidebar, padahal notifikasi
-                in-app sudah lama ditulis ke database tanpa pernah punya
-                tempat untuk dilihat. */}
-            {currentUser && (
-              <HeaderKanan userId={currentUser.id} onBuka={handleNotifNavigate} />
-            )}
-            {/* Tidak ada lagi tombol hamburger header di mobile - dulu ia
-                membuka sidebar desktop penuh (duplikat bottom nav). Satu
-                pintu masuk saja ke "More" (lewat tab paling kanan bottom
-                nav, lihat MobileMorePanel), bukan dua jalan berbeda menuju
-                hal yang sama. */}
-            {/* User badge — hanya di main menu (non-sidebar), hidden di mobile kecil */}
-            {!showSidebar && (
-              <div className="hidden md:flex items-center gap-2.5 px-4 py-2 rounded-xl border border-slate-200/80 bg-white/70 backdrop-blur-sm">
-                <div className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0"
-                  style={{ background: 'linear-gradient(135deg, #fde68a, #f59e0b)', color: '#78350f' }}>
-                  {currentUser?.full_name?.charAt(0)?.toUpperCase() ?? 'U'}
-                </div>
-                <div className="leading-tight">
-                  <p className="text-xs font-bold text-slate-800">{currentUser?.full_name}</p>
-                  <p className="text-[9px] font-bold tracking-widest uppercase text-amber-600">{currentUser?.role}</p>
-                </div>
-              </div>
-            )}
-
-            {/* Mobile: avatar only */}
-            {!showSidebar && (
-              <div className="md:hidden w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0"
-                style={{ background: 'linear-gradient(135deg, #fde68a, #f59e0b)', color: '#78350f' }}>
-                {currentUser?.full_name?.charAt(0)?.toUpperCase() ?? 'U'}
-              </div>
-            )}
-
-            {/* User Profile — hidden di mobile */}
-            {!showSidebar && (
-              <button onClick={() => setShowUserProfile(true)}
-                className="hidden md:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all"
-                style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)', color: '#065f46' }}
-                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(16,185,129,0.15)'; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(16,185,129,0.08)'; }}>
-                <svg aria-hidden="true" focusable="false" className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                </svg>
-                User Profile
-              </button>
-            )}
-
-            {/* Sign Out */}
-            {!showSidebar && (
-              <button onClick={handleLogout}
-                className="flex items-center gap-1.5 px-2 md:px-3 py-2 rounded-xl text-xs font-semibold transition-all"
-                style={{ background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.22)', color: '#b91c1c' }}
-                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(239,68,68,0.13)'; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(239,68,68,0.07)'; }}>
-                <svg aria-hidden="true" focusable="false" className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                </svg>
-                <span className="hidden sm:inline">Sign Out</span>
-              </button>
-            )}
-          </div>
+        <div className="flex items-center gap-1.5 min-w-0">
+          {currentUser && (
+            <HeaderKanan userId={currentUser.id} onBuka={handleNotifNavigate} />
+          )}
+          {currentUser && (
+            <button type="button" onClick={() => setShowUserProfile(true)}
+              aria-label={`Profil ${currentUser.full_name ?? ''}`}
+              className="hidden sidebar:inline-flex items-center gap-2 pl-1 pr-2.5 py-1 min-h-[34px] rounded-full border border-slate-200 bg-white hover:bg-slate-50 transition-colors">
+              <Inisial nama={currentUser.full_name ?? ''} />
+              <span className="text-[12px] font-semibold text-slate-700 max-w-[140px] truncate">{currentUser.full_name}</span>
+            </button>
+          )}
+          {/* Tampilan awal (sebelum sidebar dimuat) tidak punya kartu
+              pengguna di sidebar - tombol Keluar ditaruh di header. */}
+          {!showSidebar && (
+            <button type="button" onClick={handleLogout}
+              className="inline-flex items-center gap-1.5 px-3 min-h-[34px] rounded-kontrol border border-slate-200 bg-slate-50 text-[12px] font-semibold text-slate-500 hover:text-[#e34948] hover:bg-slate-100 transition-colors">
+              {IkonGaris(PATH_IKON.keluar, 15)}
+              <span className="hidden sm:inline">Keluar</span>
+            </button>
+          )}
         </div>
       </div>
-
-    </div>
+    </header>
   );
 
   // MODAL RENDERS (shared)
   const renderModals = () => (
     <>
-      {showAdminPanel && <AdminPanelModal initialTab={adminPanelTab} onClose={() => setShowAdminPanel(false)} />}
       {showUserProfile && currentUser && <UserProfileModal currentUser={currentUser} onClose={() => setShowUserProfile(false)} />}
     </>
   );
@@ -1419,610 +1405,143 @@ export default function Dashboard() {
       )}
 
       <div className="flex flex-1 min-h-0 overflow-hidden relative">
-        {/* SIDEBAR - DESKTOP-ONLY sekarang ("hidden md:flex"). Sebelumnya
-            sidebar ini juga dirender di mobile (di-translate keluar layar
-            lalu digeser masuk sebagai drawer lewat hamburger) - itu artinya
-            struktur navigasi desktop TETAP ada di DOM/alur mobile, cuma
-            disembunyikan pakai transform. Efeknya persis keluhan user:
-            membuka hamburger memunculkan seluruh pohon menu desktop
-            (Dashboard/Operations/My Work/Client) berdampingan dengan bottom
-            nav yang sudah berisi menu yang sama - dua sistem navigasi
-            berebut layar sekaligus. Sekarang sidebar ini TIDAK PERNAH ada di
-            alur visual mobile sama sekali; navigasi mobile sepenuhnya lewat
-            MobileBottomNav + MobileMorePanel (akun/menu lain), lihat
-            render-nya di bawah. */}
-        <div
-          className={`
-            hidden md:flex flex-col transition-all duration-300 ease-in-out flex-shrink-0
-            ${sidebarCollapsed ? 'md:w-[64px]' : 'md:w-[272px]'}
-            md:relative
-          `}
-          style={{
-            background: merek.warnaSidebar,
-            backdropFilter: 'blur(20px)',
-            WebkitBackdropFilter: 'blur(20px)',
-            boxShadow: '2px 0 20px rgba(0,0,0,0.10)',
-            borderRight: '1px solid rgba(0,0,0,0.07)',
-          }}
-        >
-          {/* Top accent line - warnaAksen, sama dengan warna label portal di header */}
-          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: `linear-gradient(90deg, transparent, ${merek.warnaAksen}, transparent)` }} />
-
-          {/* Collapse button — absolute top-right. hidden md:flex - collapse ke
-              rail ikon-saja SENGAJA desktop-only. Sebelumnya tombol ini bisa
-              dipencet di mobile juga (tanpa penjaga responsif), menghasilkan
-              rail 48px sempit yang ditumpuk lagi dengan overlay drawer mobile -
-              itulah sidebar mobile yang terlihat berantakan/aneh yang
-              dilaporkan user. Navigasi utama mobile sekarang lewat bottom nav
-              (lihat MobileBottomNav di bawah render sidebar ini). */}
-          {!sidebarCollapsed && (
-            <button aria-label="Collapse sidebar"
-              onClick={() => setSidebarCollapsed(true)}
-              className="hidden md:flex absolute top-2 right-2 z-10 w-6 h-6 rounded-md items-center justify-center transition-all"
-              style={{ color: '#cbd5e1' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(0,0,0,0.06)'; (e.currentTarget as HTMLButtonElement).style.color = '#64748b'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; (e.currentTarget as HTMLButtonElement).style.color = '#cbd5e1'; }}
-              title="Collapse sidebar"
-            >
-              <svg aria-hidden="true" focusable="false" className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7M18 19l-7-7 7-7" />
-              </svg>
-            </button>
-          )}
-
-          {/* ── SIDEBAR SCROLLABLE CONTENT ── */}
-          <div className="flex-1 overflow-y-auto py-3 px-2.5" style={{ scrollbarWidth: 'none' }}>
-
+        {/* SIDEBAR - pola Sales Management Platform: putih polos, menu
+            dikelompokkan menurut PEKERJAAN (Kerja Harian / Operasional /
+            Review Client / Sistem), item aktif = latar aksen-50 + teks
+            aksen-800. Desktop-only (breakpoint `sidebar` = 900px); di ponsel
+            navigasi sepenuhnya lewat bilah bawah. */}
+        <aside className="hidden sidebar:flex w-[228px] flex-shrink-0 flex-col bg-white border-r border-slate-200">
+          <nav aria-label="Navigasi utama" className="flex-1 overflow-y-auto no-scrollbar px-2.5 py-3 flex flex-col gap-0.5">
             {menuLoading ? (
               <div className="flex items-center justify-center py-10">
-                <div className="w-5 h-5 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: 'rgba(226,168,75,0.35)', borderTopColor: '#e2a84b' }} />
-              </div>
-            ) : sidebarCollapsed ? (
-              /* Collapsed: icon-only */
-              <div className="space-y-1">
-                {/* Expand button - top */}
-                <button aria-label="Main Menu"
-                  onClick={() => setSidebarCollapsed(false)}
-                  className="w-full h-9 rounded-lg flex items-center justify-center transition-all mb-1"
-                  style={{ color: '#94a3b8' }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(0,0,0,0.06)'; (e.currentTarget as HTMLButtonElement).style.color = '#334155'; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; (e.currentTarget as HTMLButtonElement).style.color = '#94a3b8'; }}
-                  title="Main Menu"
-                >
-                  <svg aria-hidden="true" focusable="false" className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                  </svg>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setShowDashboardPanel(true); setShowTicketing(false); setIframeUrl(null); }}
-                  title="Dashboard"
-                  aria-label="Dashboard"
-                  aria-current={showDashboardPanel ? 'page' : undefined}
-                  className="w-full h-9 rounded-lg flex items-center justify-center text-base transition-all"
-                  style={showDashboardPanel
-                    ? { background: 'rgba(200,134,29,0.15)', border: '1px solid rgba(200,134,29,0.35)', color: '#92600a' }
-                    : { background: 'transparent', border: '1px solid transparent', color: '#64748b' }}
-                >🏠</button>
-                {visibleMenuItems.map((menu) => (
-                  <div key={menu.key}>
-                    {menu.items.map((item, itemIndex) => {
-                      const isActive = !showDashboardPanel && ((showTicketing && item.internal && internalUrl === item.url) || (iframeUrl === item.url));
-                      return (
-                        <button
-                          key={itemIndex}
-                          onClick={() => { setShowDashboardPanel(false); handleMenuClick(item, menu.title); }}
-                          title={`${menu.title} — ${item.name}`}
-                          className="relative w-full h-9 rounded-lg flex items-center justify-center text-base transition-all"
-                          style={
-                            isActive
-                              ? { background: 'rgba(200,134,29,0.15)', border: '1px solid rgba(200,134,29,0.35)', color: '#92600a' }
-                              : { background: 'transparent', border: '1px solid transparent', color: '#64748b' }
-                          }
-                          onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(0,0,0,0.06)'; }}
-                          onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
-                        >
-                          {/* item.icon dulu (per-ITEM), MENU_ICONS[menu.key] cuma
-                              fallback untuk kategori legacy 1-item di mana key
-                              kategori kebetulan = identitas item-nya. Sebelumnya
-                              MENU_ICONS[menu.key] dipakai duluan - benar untuk
-                              kategori 1-item, tapi utk kategori banyak-item
-                              (Operations/My Work/Client) semua sub-item ikut
-                              tampil ikon KATEGORI yang sama (bug: "icon aneh",
-                              5 tombol Operations semua terlihat sama). */}
-                          <span>{item.icon}</span>
-                          {/* Antrean request jadwal muncul DI SINI — di menu yang
-                              benar-benar memuatnya, bukan di ikon Admin Panel. */}
-                          {menu.key === 'reminder-schedule' && isFullAccess && pendingRequests > 0 && (
-                            <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-black rounded-full flex items-center justify-center">
-                              {pendingRequests}
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ))}
+                <span className="w-5 h-5 rounded-full border-2 border-aksen-200 border-t-aksen-700 animate-spin" aria-hidden="true" />
               </div>
             ) : (
-              /* Expanded: full nav */
-              <div className="space-y-4">
-
-                {/* ── Dashboard/Home item (untuk SEMUA role — homepage adaptif) ── */}
-                <div>
-                  <button
-                    onClick={() => { setShowDashboardPanel(true); setShowTicketing(false); setIframeUrl(null); }}
-                    className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-all"
-                    style={showDashboardPanel
-                      ? { background: 'rgba(200,134,29,0.12)', border: '1px solid rgba(200,134,29,0.30)', color: '#92600a' }
-                      : { background: 'transparent', border: '1px solid transparent', color: '#475569' }}
-                    onMouseEnter={e => { if (!showDashboardPanel) { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(0,0,0,0.04)'; } }}
-                    onMouseLeave={e => { if (!showDashboardPanel) { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; } }}
-                  >
-                    <span className="w-5 h-5 text-sm flex items-center justify-center flex-shrink-0">🏠</span>
-                    <span className="text-sm font-semibold truncate">Dashboard</span>
-                    {showDashboardPanel && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0" />}
-                  </button>
-                </div>
-
+              <>
                 {/* Project selector GLOBAL - satu titik kontrol untuk semua
-                    menu Operations & widget Dashboard, persis "Select
-                    tenant" di referensi (MicroCMS): pilih sekali di sini,
-                    semua menu di bawah menyesuaikan project yang sama -
-                    tidak perlu pilih ulang project di tiap halaman. */}
+                    menu Operasional & widget Dashboard: pilih sekali di sini,
+                    semua menu menyesuaikan project yang sama. */}
                 {bisaPilihFsProject && (
-                  <div>
+                  <div className="mb-2">
+                    <p className="px-3 pt-1 pb-1 text-[9px] font-bold text-slate-400 uppercase tracking-[0.14em]">Project</p>
                     <select value={fsSelectedProjectId} onChange={e => pilihFsProject(e.target.value)}
-                      className="w-full text-sm font-semibold px-2.5 py-2 rounded-lg border border-slate-200 bg-white text-slate-700">
-                      <option value="">— Select project —</option>
+                      aria-label="Pilih project"
+                      className="w-full text-[12px] font-semibold px-2.5 py-2 rounded-kontrol border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 transition-colors">
+                      <option value="">— Pilih project —</option>
                       {fsProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                     </select>
                     {!fsSelectedProjectId && fsProjects.length > 0 && (
-                      <p className="mt-1.5 px-1 text-[11px] font-semibold text-amber-700 flex items-center gap-1.5">
-                        <span aria-hidden="true">🏢</span> Select project to access Operations menus
+                      <p className="mt-1.5 px-1 text-[10.5px] font-semibold text-aksen-800 leading-snug">
+                        Pilih project dulu untuk membuka menu Operasional.
                       </p>
                     )}
                   </div>
                 )}
 
-                {/* Field Service section */}
-                {visibleMenuItems.filter(m => FIELD_SERVICE_KEYS.includes(m.key)).length > 0 && (
-                  <div>
-                    <div className="flex items-center gap-2 px-1 mb-1.5">
-                      <span className="text-[10px] font-bold tracking-[0.14em] uppercase" style={{ color: 'rgba(0,0,0,0.38)' }}>Operations</span>
-                      <div className="flex-1 h-px" style={{ background: 'rgba(0,0,0,0.08)' }} />
-                    </div>
-                    <div className="space-y-0.5">
-                      {visibleMenuItems.filter(m => FIELD_SERVICE_KEYS.includes(m.key)).flatMap(menu =>
-                        menu.items.map((item, itemIndex) => {
-                          const isActive = (showTicketing && item.internal && internalUrl === item.url) || (iframeUrl === item.url);
-                          return (
-                            <button
-                              key={`${menu.key}-${itemIndex}`}
-                              onClick={() => handleMenuClick(item, menu.title)}
-                              aria-current={isActive ? 'page' : undefined}
-                              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-all"
-                              style={isActive
-                                ? { background: 'rgba(67,56,202,0.10)', border: '1px solid rgba(67,56,202,0.25)', color: '#3730a3' }
-                                : { background: 'transparent', border: '1px solid transparent', color: '#334155' }}
-                              onMouseEnter={e => { if (!isActive) { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(67,56,202,0.05)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(67,56,202,0.12)'; } }}
-                              onMouseLeave={e => { if (!isActive) { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'transparent'; } }}
-                            >
-                              <span
-                                className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 transition-colors text-sm"
-                                style={{
-                                  background: isActive ? 'rgba(67,56,202,0.15)' : 'rgba(0,0,0,0.06)',
-                                  color: isActive ? '#3730a3' : '#64748b',
-                                }}
-                              >
-                                {item.icon}
-                              </span>
-                              <span className="flex-1 truncate text-sm font-medium">{item.name}</span>
-                              {isActive && (
-                                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: '#4338ca' }} />
-                              )}
-                            </button>
-                          );
-                        })
+                {KELOMPOK_SIDEBAR.map((kelompok) => {
+                  const menus = visibleMenuItems.filter(m => kelompok.keys.includes(m.key));
+                  // Kelompok tanpa satu pun menu untuk peran ini tidak
+                  // ditampilkan - judul kelompok kosong hanya membingungkan.
+                  if (menus.length === 0 && !kelompok.denganBeranda) return null;
+                  const idJudul = `kelompok-${kelompok.label.replace(/\s+/g, '-')}`;
+                  return (
+                    <div key={kelompok.label} role="group" aria-labelledby={idJudul} className="flex flex-col gap-0.5 mb-2 last:mb-0">
+                      <p id={idJudul} className="px-3 pt-1 pb-1 text-[9px] font-bold text-slate-400 uppercase tracking-[0.14em]">
+                        {kelompok.label}
+                      </p>
+                      {kelompok.denganBeranda && (
+                        <TautanSidebar
+                          label="Dashboard"
+                          ikon={IkonGaris(PATH_IKON.dashboard)}
+                          aktif={showDashboardPanel}
+                          onClick={() => { setShowAdminPanel(false); setShowDashboardPanel(true); setShowTicketing(false); setIframeUrl(null); }}
+                        />
                       )}
+                      {menus.flatMap(menu => menu.items.map((item, itemIndex) => (
+                        <TautanSidebar
+                          key={`${menu.key}-${itemIndex}`}
+                          id={itemIndex === 0 ? `tour-menu-${menu.key}` : undefined}
+                          label={kelompok.pakaiJudulMenu && menu.items.length === 1 ? menu.title : item.name}
+                          ikon={ikonMenu(item, kelompok.pakaiJudulMenu ? MENU_ICONS[menu.key] : undefined)}
+                          aktif={menuAktif(item)}
+                          sorotTur={tourHighlightKey === menu.key}
+                          lencana={menu.key === 'reminder-schedule' && isFullAccess && pendingRequests > 0 ? pendingRequests : 0}
+                          eksternal={Boolean(item.external && !item.embed)}
+                          onClick={() => { setShowDashboardPanel(false); handleMenuClick(item, menu.title); }}
+                        />
+                      )))}
                     </div>
-                  </div>
-                )}
+                  );
+                })}
 
-                {/* Teknisi section */}
-                {visibleMenuItems.filter(m => TEKNISI_KEYS.includes(m.key)).length > 0 && (
-                  <div>
-                    <div className="flex items-center gap-2 px-1 mb-1.5">
-                      <span className="text-[10px] font-bold tracking-[0.14em] uppercase" style={{ color: 'rgba(0,0,0,0.38)' }}>My Work</span>
-                      <div className="flex-1 h-px" style={{ background: 'rgba(0,0,0,0.08)' }} />
-                    </div>
-                    <div className="space-y-0.5">
-                      {visibleMenuItems.filter(m => TEKNISI_KEYS.includes(m.key)).flatMap(menu =>
-                        menu.items.map((item, itemIndex) => {
-                          const isActive = (showTicketing && item.internal && internalUrl === item.url) || (iframeUrl === item.url);
-                          return (
-                            <button
-                              key={`${menu.key}-${itemIndex}`}
-                              onClick={() => handleMenuClick(item, menu.title)}
-                              aria-current={isActive ? 'page' : undefined}
-                              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-all"
-                              style={isActive
-                                ? { background: 'rgba(5,150,105,0.10)', border: '1px solid rgba(5,150,105,0.25)', color: '#047857' }
-                                : { background: 'transparent', border: '1px solid transparent', color: '#334155' }}
-                              onMouseEnter={e => { if (!isActive) { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(5,150,105,0.05)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(5,150,105,0.12)'; } }}
-                              onMouseLeave={e => { if (!isActive) { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'transparent'; } }}
-                            >
-                              <span
-                                className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 transition-colors text-sm"
-                                style={{
-                                  background: isActive ? 'rgba(5,150,105,0.15)' : 'rgba(0,0,0,0.06)',
-                                  color: isActive ? '#047857' : '#64748b',
-                                }}
-                              >
-                                {item.icon}
-                              </span>
-                              <span className="flex-1 truncate text-sm font-medium">{item.name}</span>
-                              {isActive && (
-                                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: '#059669' }} />
-                              )}
-                            </button>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Client Review section */}
-                {visibleMenuItems.filter(m => CLIENT_REVIEW_KEYS.includes(m.key)).length > 0 && (
-                  <div>
-                    <div className="flex items-center gap-2 px-1 mb-1.5">
-                      <span className="text-[10px] font-bold tracking-[0.14em] uppercase" style={{ color: 'rgba(0,0,0,0.38)' }}>Client</span>
-                      <div className="flex-1 h-px" style={{ background: 'rgba(0,0,0,0.08)' }} />
-                    </div>
-                    <div className="space-y-0.5">
-                      {visibleMenuItems.filter(m => CLIENT_REVIEW_KEYS.includes(m.key)).flatMap(menu =>
-                        menu.items.map((item, itemIndex) => {
-                          const isActive = (showTicketing && item.internal && internalUrl === item.url) || (iframeUrl === item.url);
-                          return (
-                            <button
-                              key={`${menu.key}-${itemIndex}`}
-                              onClick={() => handleMenuClick(item, menu.title)}
-                              aria-current={isActive ? 'page' : undefined}
-                              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-all"
-                              style={isActive
-                                ? { background: 'rgba(217,119,6,0.10)', border: '1px solid rgba(217,119,6,0.25)', color: '#b45309' }
-                                : { background: 'transparent', border: '1px solid transparent', color: '#334155' }}
-                              onMouseEnter={e => { if (!isActive) { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(217,119,6,0.05)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(217,119,6,0.12)'; } }}
-                              onMouseLeave={e => { if (!isActive) { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'transparent'; } }}
-                            >
-                              <span
-                                className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 transition-colors text-sm"
-                                style={{
-                                  background: isActive ? 'rgba(217,119,6,0.15)' : 'rgba(0,0,0,0.06)',
-                                  color: isActive ? '#b45309' : '#64748b',
-                                }}
-                              >
-                                {item.icon}
-                              </span>
-                              <span className="flex-1 truncate text-sm font-medium">{item.name}</span>
-                              {isActive && (
-                                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: '#d97706' }} />
-                              )}
-                            </button>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Learning Center section */}
-                {visibleMenuItems.filter(m => LEARNING_KEYS.includes(m.key)).length > 0 && (
-                  <div>
-                    <div className="flex items-center gap-2 px-1 mb-1.5">
-                      <span className="text-[10px] font-bold tracking-[0.14em] uppercase" style={{ color: 'rgba(0,0,0,0.38)' }}>Learning</span>
-                      <div className="flex-1 h-px" style={{ background: 'rgba(0,0,0,0.08)' }} />
-                    </div>
-                    <div className="space-y-0.5">
-                      {visibleMenuItems.filter(m => LEARNING_KEYS.includes(m.key)).map(menu => {
-                        if (menu.items.length === 1) {
-                          const item = menu.items[0];
-                          const isActive = (showTicketing && item.internal && internalUrl === item.url) || (iframeUrl === item.url);
-                          const isTourHL = tourHighlightKey === menu.key;
-                          return (
-                            <button
-                              key={menu.key}
-                              id={`tour-menu-${menu.key}`}
-                              onClick={() => handleMenuClick(item, menu.title)}
-                              aria-current={isActive ? 'page' : undefined}
-                              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-all"
-                              style={
-                                isTourHL
-                                  ? { background: 'rgba(250,204,21,0.13)', border: '1.5px solid rgba(250,204,21,0.65)', color: '#334155', animation: 'tourMenuPulse 1.6s ease-in-out infinite', position: 'relative', zIndex: 1510 }
-                                  : isActive
-                                    ? { background: 'rgba(67,56,202,0.10)', border: '1px solid rgba(67,56,202,0.25)', color: '#3730a3' }
-                                    : { background: 'transparent', border: '1px solid transparent', color: '#334155' }
-                              }
-                              onMouseEnter={e => { if (!isActive && !isTourHL) { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(67,56,202,0.05)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(67,56,202,0.12)'; } }}
-                              onMouseLeave={e => { if (!isActive && !isTourHL) { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'transparent'; } }}
-                            >
-                              <span
-                                className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 transition-colors"
-                                style={{
-                                  background: isActive ? 'rgba(67,56,202,0.15)' : 'rgba(0,0,0,0.06)',
-                                  color: isActive ? '#3730a3' : '#64748b',
-                                }}
-                              >
-                                {MENU_ICONS[menu.key] ?? <span>{menu.icon}</span>}
-                              </span>
-                              <span className="flex-1 truncate text-sm font-medium">{menu.title}</span>
-                              {isActive && (
-                                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: '#4338ca' }} />
-                              )}
-                            </button>
-                          );
-                        }
-                        return null;
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* Project section */}
-                {visibleMenuItems.filter(m => PROJECT_KEYS.includes(m.key)).length > 0 && (
-                  <div>
-                    <div className="flex items-center gap-2 px-1 mb-1.5">
-                      <span className="text-[10px] font-bold tracking-[0.14em] uppercase" style={{ color: 'rgba(0,0,0,0.38)' }}>Project</span>
-                      <div className="flex-1 h-px" style={{ background: 'rgba(0,0,0,0.08)' }} />
-                    </div>
-                    <div className="space-y-0.5">
-                      {visibleMenuItems.filter(m => PROJECT_KEYS.includes(m.key)).map(menu => {
-                        if (menu.items.length === 1) {
-                          const item = menu.items[0];
-                          const isActive = (showTicketing && item.internal && internalUrl === item.url) || (iframeUrl === item.url);
-                          const isTourHL = tourHighlightKey === menu.key;
-                          return (
-                            <button
-                              key={menu.key}
-                              id={`tour-menu-${menu.key}`}
-                              onClick={() => handleMenuClick(item, menu.title)}
-                              aria-current={isActive ? 'page' : undefined}
-                              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-all"
-                              style={
-                                isTourHL
-                                  ? { background: 'rgba(250,204,21,0.13)', border: '1.5px solid rgba(250,204,21,0.65)', color: '#334155', animation: 'tourMenuPulse 1.6s ease-in-out infinite', position: 'relative', zIndex: 1510 }
-                                  : isActive
-                                    ? { background: 'rgba(200,134,29,0.11)', border: '1px solid rgba(200,134,29,0.28)', color: '#92600a' }
-                                    : { background: 'transparent', border: '1px solid transparent', color: '#334155' }
-                              }
-                              onMouseEnter={e => { if (!isActive && !isTourHL) { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(0,0,0,0.05)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(0,0,0,0.06)'; } }}
-                              onMouseLeave={e => { if (!isActive && !isTourHL) { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'transparent'; } }}
-                            >
-                              <span
-                                className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 transition-colors"
-                                style={{
-                                  background: isActive ? 'rgba(200,134,29,0.18)' : 'rgba(0,0,0,0.06)',
-                                  color: isActive ? '#92600a' : '#64748b',
-                                }}
-                              >
-                                {MENU_ICONS[menu.key] ?? <svg aria-hidden="true" focusable="false" className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" strokeWidth={2} /></svg>}
-                              </span>
-                              <span className="flex-1 truncate text-sm font-medium">{menu.title}</span>
-                              {isActive && (
-                                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: '#c8861d' }} />
-                              )}
-                            </button>
-                          );
-                        }
-                        return null;
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* Internal Daily section */}
-                {visibleMenuItems.filter(m => INTERNAL_DAILY_KEYS.includes(m.key)).length > 0 && (
-                  <div>
-                    <div className="flex items-center gap-2 px-1 mb-1.5">
-                      <span className="text-[10px] font-bold tracking-[0.14em] uppercase" style={{ color: 'rgba(0,0,0,0.38)' }}>Internal Daily</span>
-                      <div className="flex-1 h-px" style={{ background: 'rgba(0,0,0,0.08)' }} />
-                    </div>
-                    <div className="space-y-0.5">
-                      {visibleMenuItems.filter(m => INTERNAL_DAILY_KEYS.includes(m.key)).flatMap(menu =>
-                        menu.items.map((item, itemIndex) => {
-                          const isActive = (showTicketing && item.internal && internalUrl === item.url) || (iframeUrl === item.url);
-                          const isTourHL = tourHighlightKey === menu.key;
-                          return (
-                            <button
-                              key={`${menu.key}-${itemIndex}`}
-                              id={`tour-menu-${menu.key}`}
-                              onClick={() => handleMenuClick(item, menu.title)}
-                              aria-current={isActive ? 'page' : undefined}
-                              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-all"
-                              style={
-                                isTourHL
-                                  ? { background: 'rgba(250,204,21,0.13)', border: '1.5px solid rgba(250,204,21,0.65)', color: '#334155', animation: 'tourMenuPulse 1.6s ease-in-out infinite', position: 'relative', zIndex: 1510 }
-                                  : isActive
-                                    ? { background: 'rgba(200,134,29,0.11)', border: '1px solid rgba(200,134,29,0.28)', color: '#92600a' }
-                                    : { background: 'transparent', border: '1px solid transparent', color: '#334155' }
-                              }
-                              onMouseEnter={e => { if (!isActive && !isTourHL) { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(0,0,0,0.05)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(0,0,0,0.06)'; } }}
-                              onMouseLeave={e => { if (!isActive && !isTourHL) { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'transparent'; } }}
-                            >
-                              <span
-                                className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 transition-colors"
-                                style={{
-                                  background: isActive ? 'rgba(200,134,29,0.18)' : 'rgba(0,0,0,0.06)',
-                                  color: isActive ? '#92600a' : '#64748b',
-                                }}
-                              >
-                                {MENU_ICONS[menu.key] ?? <svg aria-hidden="true" focusable="false" className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" strokeWidth={2} /></svg>}
-                              </span>
-                              <span className="flex-1 truncate text-sm font-medium">{item.name}</span>
-                          {/* Antrean request jadwal muncul DI SINI — di menu yang
-                              benar-benar memuatnya, bukan di ikon Admin Panel. */}
-                              {menu.key === 'reminder-schedule' && isFullAccess && pendingRequests > 0 && (
-                                <span className="text-[10px] font-black bg-red-500 text-white rounded-full px-1.5 py-0.5 leading-none flex-shrink-0">
-                                  {pendingRequests}
-                                </span>
-                              )}
-                              {item.external && !item.embed && (
-                                <svg aria-hidden="true" focusable="false" className="w-3 h-3 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                </svg>
-                              )}
-                              {isActive && !item.external && (
-                                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: '#c8861d' }} />
-                              )}
-                            </button>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
-                )}
-
-
-              </div>
-            )}
-          </div>
-
-          {/* ── SIDEBAR FOOTER: User + Admin + Sign Out ── */}
-          <div className="flex-shrink-0" style={{ borderTop: '1px solid rgba(0,0,0,0.07)' }}>
-            {sidebarCollapsed ? (
-              /* Collapsed footer */
-              <div className="py-2 px-1.5 flex flex-col items-center gap-1.5">
-                {/* Avatar */}
-                <button aria-label={currentUser?.full_name ?? ''}
-                  onClick={() => setShowUserProfile(true)}
-                  className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0 transition-all"
-                  style={{ background: 'linear-gradient(135deg, #fde68a, #f59e0b)', color: '#78350f' }}
-                  title={currentUser?.full_name ?? ''}
-                >
-                  {currentUser?.full_name?.charAt(0)?.toUpperCase() ?? 'U'}
-                </button>
-
-                {/* Admin */}
                 {isAdmin && (
-                  <button
-                    onClick={() => { setAdminPanelTab('settings'); setShowAdminPanel(true); }}
-                    className="relative w-9 h-9 rounded-lg flex items-center justify-center transition-all"
-                    style={{ color: '#94a3b8' }}
-                    title={pendingUsers > 0 ? `Admin Panel — ${pendingUsers} user menunggu persetujuan` : 'Admin Panel'}
-                    onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = '#4338ca'; (e.currentTarget as HTMLButtonElement).style.background = 'rgba(99,102,241,0.1)'; }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = '#94a3b8'; (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
-                  >
-                    <svg aria-hidden="true" focusable="false" className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                    {pendingUsers > 0 && (
-                      <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-black rounded-full flex items-center justify-center">{pendingUsers}</span>
+                  <div role="group" aria-labelledby="kelompok-Sistem" className="flex flex-col gap-0.5">
+                    <p id="kelompok-Sistem" className="px-3 pt-1 pb-1 text-[9px] font-bold text-slate-400 uppercase tracking-[0.14em]">Sistem</p>
+                    <TautanSidebar
+                      label="Admin Panel"
+                      ikon={IkonGaris(PATH_IKON.admin)}
+                      aktif={showAdminPanel}
+                      lencana={pendingUsers}
+                      onClick={() => bukaAdminPanel(showAdminPanel ? adminPanelTab : 'settings')}
+                    />
+                    {/* Sub-menu Admin Panel menempel DI SINI pada menu
+                        induknya (pola Sales) - bukan panel navigasi kedua di
+                        dalam area isi. */}
+                    {showAdminPanel && (
+                      <div className="ml-4 mt-1 mb-1 pl-2.5 border-l border-slate-200 flex flex-col gap-0.5">
+                        {URUTAN_KELOMPOK_ADMIN.map(kelompok => {
+                          const isi = BAGIAN_ADMIN.filter(b => b.kelompok === kelompok);
+                          if (isi.length === 0) return null;
+                          return (
+                            <div key={kelompok} className="flex flex-col gap-0.5">
+                              <p className="px-2 pt-1.5 pb-0.5 text-[9px] font-bold text-slate-400 uppercase tracking-[0.12em]">{kelompok}</p>
+                              {isi.map(b => {
+                                const ini = b.kunci === adminPanelTab;
+                                return (
+                                  <button key={b.kunci} type="button" aria-current={ini ? 'true' : undefined}
+                                    onClick={() => setAdminPanelTab(b.kunci)}
+                                    className={`flex items-center gap-2 px-2.5 py-2 rounded-kontrol text-left text-[12px] font-semibold transition-colors
+                                                ${ini ? 'bg-aksen-50 text-aksen-800' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}>
+                                    <span aria-hidden="true" className="text-[11px]">{b.ikon}</span>
+                                    <span className="flex-1 truncate">{b.label}</span>
+                                    {b.kunci === 'settings' && pendingUsers > 0 && (
+                                      <span className="text-[9px] font-black bg-[#e34948] text-white rounded-full px-1.5 py-0.5 leading-none">{pendingUsers}</span>
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          );
+                        })}
+                      </div>
                     )}
-                  </button>
+                  </div>
                 )}
-
-                {/* Sign out */}
-                <button aria-label="Sign Out"
-                  onClick={handleLogout}
-                  className="w-9 h-9 rounded-lg flex items-center justify-center transition-all"
-                  style={{ color: '#94a3b8' }}
-                  title="Sign Out"
-                  onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = '#b91c1c'; (e.currentTarget as HTMLButtonElement).style.background = 'rgba(239,68,68,0.07)'; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = '#94a3b8'; (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
-                >
-                  <svg aria-hidden="true" focusable="false" className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                  </svg>
-                </button>
-              </div>
-            ) : (
-              /* Expanded footer */
-              <div className="p-3 space-y-1">
-
-                {/* User profile row */}
-                <button
-                  onClick={() => setShowUserProfile(true)}
-                  className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition-all text-left"
-                  style={{ background: 'rgba(0,0,0,0.03)', border: '1px solid rgba(0,0,0,0.06)' }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(0,0,0,0.07)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(200,134,29,0.22)'; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(0,0,0,0.03)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(0,0,0,0.06)'; }}
-                >
-                  <div
-                    className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0"
-                    style={{ background: 'linear-gradient(135deg, #fde68a, #f59e0b)', color: '#78350f' }}
-                  >
-                    {currentUser?.full_name?.charAt(0)?.toUpperCase() ?? 'U'}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold truncate leading-tight" style={{ color: '#1e293b' }}>{currentUser?.full_name ?? '-'}</p>
-                    <p className="text-[10px] font-bold tracking-widest uppercase mt-0.5" style={{ color: '#c8861d' }}>{currentUser?.role ?? '-'}</p>
-                  </div>
-                  <div className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0" style={{ color: '#94a3b8' }}>
-                    <svg aria-hidden="true" focusable="false" className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
-                </button>
-
-                {/* Administration - dulu cuma tombol "Admin Panel" lepas
-                    tanpa label kategori. Label kecil ini menyamakannya
-                    secara visual dengan kategori navigasi lain (Operations/
-                    My Work/Client) sesuai brief transformasi IA - modal di
-                    baliknya (Users & Roles via tab "settings", Settings
-                    lain via tab merek/integrasi/rilis) sudah menyatukan
-                    kedua konsep itu, tidak perlu dipecah jadi 2 link. */}
-                {isAdmin && (
-                  <>
-                    <p className="px-3 pt-2 pb-1 text-[10px] font-bold tracking-widest uppercase text-slate-400">Administration</p>
-                    <button
-                      onClick={() => { setAdminPanelTab('settings'); setShowAdminPanel(true); }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-medium transition-all"
-                      style={{ color: '#64748b', border: '1px solid transparent' }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(99,102,241,0.07)'; (e.currentTarget as HTMLButtonElement).style.color = '#4338ca'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(99,102,241,0.18)'; }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; (e.currentTarget as HTMLButtonElement).style.color = '#64748b'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'transparent'; }}
-                    >
-                      <svg aria-hidden="true" focusable="false" className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                      <span>Users & Roles / Settings</span>
-                      {pendingUsers > 0 && (
-                        <span className="ml-auto text-[10px] font-black bg-red-500 text-white rounded-full px-1.5 py-0.5 leading-none">{pendingUsers}</span>
-                      )}
-                    </button>
-                  </>
-                )}
-
-                {/* Sign out */}
-                <button
-                  onClick={handleLogout}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-medium transition-all"
-                  style={{ color: '#94a3b8', border: '1px solid transparent' }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(239,68,68,0.06)'; (e.currentTarget as HTMLButtonElement).style.color = '#b91c1c'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(239,68,68,0.15)'; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; (e.currentTarget as HTMLButtonElement).style.color = '#94a3b8'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'transparent'; }}
-                >
-                  <svg aria-hidden="true" focusable="false" className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                  </svg>
-                  Sign out
-                </button>
-
-              </div>
+              </>
             )}
-          </div>
-        </div>
+          </nav>
 
-        {/* BOTTOM NAV - SATU-SATUNYA navigasi di mobile ("buat menu nya di
-            bawah bukan di samping selayaknya menu umum di mobile aplikasi" -
-            permintaan user; lalu ditegaskan ulang lebih keras: sidebar
-            desktop TIDAK BOLEH muncul sama sekali di alur mobile). Dibatasi
-            maksimal 3 menu utama + Home + More — bukan menjejalkan SELURUH
-            menu jadi tombol yang makin kecil tiap peran punya menu makin
-            banyak. Menu yang tidak muat, plus akun/admin/sign-out, pindah ke
-            MobileMorePanel (lembar terpisah, BUKAN sidebar desktop yang
-            disempitkan). */}
+          {/* Kartu pengguna - profil + keluar, persis pola Sales. */}
+          <div className="px-2.5 py-3 border-t border-slate-100">
+            <button type="button" onClick={() => setShowUserProfile(true)}
+              className="w-full text-left flex items-center gap-2.5 px-2 py-2 rounded-kontrol hover:bg-slate-50 transition-colors">
+              <Inisial nama={currentUser?.full_name ?? ''} />
+              <span className="min-w-0 flex-1">
+                <span className="block text-[12px] font-bold text-slate-800 truncate">{currentUser?.full_name ?? '-'}</span>
+                <span className="block text-[10px] text-slate-400 capitalize">{currentUser?.role ?? '-'}</span>
+              </span>
+            </button>
+            <button type="button" onClick={handleLogout}
+              className="w-full mt-1 px-3 py-2 rounded-kontrol text-[12px] font-semibold text-slate-500 hover:bg-slate-50 hover:text-[#e34948] transition-colors text-left">
+              Keluar
+            </button>
+          </div>
+        </aside>
+
+        {/* BILAH BAWAH - satu-satunya navigasi di ponsel (pola Sales):
+            Dashboard + maksimal 3 menu utama + "Lainnya". Menu yang tidak
+            muat, akun, Admin Panel, dan Keluar ada di panel Lainnya. Baris
+            footer (hak cipta + versi) menempel di bawah ikon. */}
         <MobileBottomNav
           primaryItems={mobilePrimaryItems}
           showDashboardPanel={showDashboardPanel}
@@ -2030,9 +1549,10 @@ export default function Dashboard() {
           internalUrl={internalUrl}
           iframeUrl={iframeUrl}
           moreActive={mobileMoreOpen}
-          onHome={() => { setShowDashboardPanel(true); setShowTicketing(false); setIframeUrl(null); }}
-          onMenuClick={handleMenuClick}
+          onHome={() => { setMobileMoreOpen(false); setShowAdminPanel(false); setShowDashboardPanel(true); setShowTicketing(false); setIframeUrl(null); }}
+          onMenuClick={(item, judul) => { setMobileMoreOpen(false); setShowDashboardPanel(false); handleMenuClick(item, judul); }}
           onMore={() => setMobileMoreOpen(o => !o)}
+          kaki={<KakiHalaman namaPlatform={merek.namaPlatform} ponsel />}
         />
 
         <MobileMorePanel
@@ -2045,9 +1565,9 @@ export default function Dashboard() {
           showTicketing={showTicketing}
           internalUrl={internalUrl}
           iframeUrl={iframeUrl}
-          onMenuClick={(item, judul) => { setMobileMoreOpen(false); handleMenuClick(item, judul); }}
+          onMenuClick={(item, judul) => { setMobileMoreOpen(false); setShowDashboardPanel(false); handleMenuClick(item, judul); }}
           onProfil={() => { setMobileMoreOpen(false); setShowUserProfile(true); }}
-          onAdminPanel={() => { setMobileMoreOpen(false); setAdminPanelTab('settings'); setShowAdminPanel(true); }}
+          onAdminPanel={() => bukaAdminPanel('settings')}
           onLogout={() => { setMobileMoreOpen(false); handleLogout(); }}
         />
 
@@ -2063,8 +1583,9 @@ export default function Dashboard() {
             Modul di dalam iframe sudah punya scroll sendiri (h-screen +
             overflow-hidden), jadi lapisan ini tidak boleh ikut men-scroll.
             min-h-0 wajib: tanpa itu flex-1 menolak menyusut di bawah tinggi
-            kontennya dan penguncian ini tidak berlaku. */}
-        <div className="flex-1 flex flex-col overflow-hidden min-h-0 pb-14 md:pb-0">
+            kontennya dan penguncian ini tidak berlaku. Padding bawah di
+            ponsel = tinggi bilah bawah + baris footer di dalamnya. */}
+        <div className="flex-1 min-w-0 flex flex-col overflow-hidden min-h-0 pb-[calc(74px+env(safe-area-inset-bottom))] sidebar:pb-0">
           <div className="flex-1 min-h-0 overflow-hidden relative">
             {/* ── Loading Bar (muncul saat menu diklik, hilang setelah iframe loaded) ── */}
             {iframeLoading && (
@@ -2082,7 +1603,11 @@ export default function Dashboard() {
                 </div>
               </div>
             )}
-            {showDashboardPanel && currentUser ? (
+            {showAdminPanel && isAdmin ? (
+              <div className="w-full h-full overflow-hidden">
+                <AdminPanelHalaman bagian={adminPanelTab} setBagian={setAdminPanelTab} />
+              </div>
+            ) : showDashboardPanel && currentUser ? (
               /* Permission-Aware Dashboard - widget adaptif per permission.
                  Background transparan (IVP bg tembus); hanya card yg opaque.
                  Analytics = launcher full-screen (bukan embed) utk yg berhak. */
@@ -2152,6 +1677,8 @@ export default function Dashboard() {
         </div>
       </div>
 
+      <KakiHalaman namaPlatform={merek.namaPlatform} />
+
       <style>{`
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
         @keyframes dropIn { from { opacity: 0; transform: translateY(-8px) scale(0.97); } to { opacity: 1; transform: none; } }
@@ -2166,18 +1693,127 @@ export default function Dashboard() {
 }
 
 /**
- * Bottom tab bar - navigasi utama di layar mobile, menggantikan sidebar
- * (yang di mobile jadi drawer sekunder saja - lihat komentar di titik
- * pemanggilannya). Mengikuti pola navigasi mobile standar: ikon + label,
- * maksimal 5 item, item level-teratas saja (tidak ada sub-navigasi di
- * dalamnya) - `visibleMenuItems` sudah difilter per role, jadi jumlah
- * tombolnya otomatis pendek untuk kebanyakan akun (Technician/Client
- * biasanya cuma 1-2 kategori × 1 item).
+ * Ikon garis satu bahasa visual (pola Sales Management Platform) untuk
+ * sidebar dan bilah bawah. Item yang tidak punya padanan di PATH_IKON jatuh
+ * ke ikon bawaan menunya, jadi menu modul lama tetap tampil.
+ */
+function IkonGaris(d: string, ukuran = 18) {
+  return (
+    <svg width={ukuran} height={ukuran} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d={d} stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+const PATH_IKON: Record<string, string> = {
+  dashboard: 'M4 13h6V4H4v9zm0 7h6v-5H4v5zm10 0h6V11h-6v9zm0-16v5h6V4h-6z',
+  admin: 'M10.3 4.3a1.9 1.9 0 013.4 0l.5 1a1.9 1.9 0 002.3 1l1-.3a1.9 1.9 0 012.1 2.9l-.6.9a1.9 1.9 0 000 2.4l.6.9a1.9 1.9 0 01-2.1 2.9l-1-.3a1.9 1.9 0 00-2.3 1l-.5 1a1.9 1.9 0 01-3.4 0l-.5-1a1.9 1.9 0 00-2.3-1l-1 .3a1.9 1.9 0 01-2.1-2.9l.6-.9a1.9 1.9 0 000-2.4l-.6-.9a1.9 1.9 0 012.1-2.9l1 .3a1.9 1.9 0 002.3-1l.5-1z M12 14.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z',
+  lainnya: 'M5 12h.01M12 12h.01M19 12h.01',
+  profil: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z',
+  keluar: 'M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1',
+  '/field-service?tab=cycles': 'M8 2v4M16 2v4M3 10h18M5 6h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2z',
+  '/field-service?tab=locations': 'M12 21s7-5.686 7-11a7 7 0 10-14 0c0 5.314 7 11 7 11z M12 12a2.5 2.5 0 100-5 2.5 2.5 0 000 5z',
+  '/field-service?tab=review': 'M9 12l2 2 4-4M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+  '/teknisi': 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4',
+};
+
+function ikonMenu(item: MenuItem['items'][0], cadangan?: React.ReactNode, ukuran = 18): React.ReactNode {
+  const d = PATH_IKON[item.url];
+  if (d) return IkonGaris(d, ukuran);
+  if (cadangan) return cadangan;
+  return <span className="text-[15px] leading-none" aria-hidden="true">{item.icon}</span>;
+}
+
+/** Satu baris menu sidebar - aktif: latar aksen-50, teks aksen-800, ikon aksen-700. */
+function TautanSidebar({ id, label, ikon, aktif, sorotTur, lencana = 0, eksternal, onClick }: {
+  id?: string;
+  label: string;
+  ikon: React.ReactNode;
+  aktif: boolean;
+  sorotTur?: boolean;
+  lencana?: number;
+  eksternal?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button" id={id} onClick={onClick}
+      aria-current={aktif ? 'page' : undefined}
+      className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-kontrol text-left text-[13px] font-semibold transition-colors
+                  ${sorotTur
+                    ? 'relative z-[1510] bg-amber-50 ring-2 ring-amber-300 text-slate-800'
+                    : aktif
+                      ? 'bg-aksen-50 text-aksen-800'
+                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}
+    >
+      <span className={`w-[19px] flex justify-center flex-shrink-0 ${aktif ? 'text-aksen-700' : 'text-slate-400'}`}>{ikon}</span>
+      <span className="flex-1 min-w-0 truncate">{label}</span>
+      {lencana > 0 && (
+        <span className="text-[10px] font-black bg-[#e34948] text-white rounded-full px-1.5 py-0.5 leading-none tabular-nums flex-shrink-0">
+          {lencana}
+        </span>
+      )}
+      {eksternal && IkonGaris('M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14', 12)}
+    </button>
+  );
+}
+
+function Inisial({ nama, besar }: { nama: string; besar?: boolean }) {
+  const huruf = nama.trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+  return (
+    <span className={`${besar ? 'w-10 h-10 text-[13px]' : 'w-8 h-8 text-[11px]'} rounded-full bg-aksen-100 text-aksen-800 grid place-items-center font-black flex-shrink-0`}>
+      {huruf || '?'}
+    </span>
+  );
+}
+
+/**
+ * Footer pola Sales: hak cipta di kiri, identitas build (versi · commit ·
+ * waktu build) di kanan - supaya saat ada laporan masalah, jelas versi mana
+ * yang dipakai. Di layar lebar footer menempel di dasar kerangka; di ponsel
+ * menjadi baris tipis di DALAM bilah navigasi bawah (varian `ponsel`).
+ */
+function KakiHalaman({ namaPlatform, ponsel }: { namaPlatform: string; ponsel?: boolean }) {
+  const versi = process.env.NEXT_PUBLIC_APP_VERSION;
+  const commit = process.env.NEXT_PUBLIC_GIT_SHA;
+  const waktu = process.env.NEXT_PUBLIC_BUILD_TIME;
+  const waktuBuild = waktu
+    ? new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' }).format(new Date(waktu))
+    : null;
+  const tahun = new Date().getFullYear();
+
+  if (ponsel) {
+    return (
+      <div className="flex items-center justify-between gap-2 px-3 pb-1 pt-0.5 text-[9.5px] text-slate-400 leading-none">
+        <span className="truncate min-w-0">© {tahun} {namaPlatform}</span>
+        <span className="flex-shrink-0 tabular-nums">
+          {versi && `v${versi}`}{commit && <> · <span className="font-mono">{commit}</span></>}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <footer className="hidden sidebar:flex flex-shrink-0 h-9 border-t border-slate-200 bg-white/95 backdrop-blur px-5 items-center justify-between gap-3">
+      <p className="text-[11px] text-slate-500 truncate min-w-0">© {tahun} {namaPlatform}</p>
+      <p className="flex-shrink-0 inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-[10.5px] font-medium text-slate-500 tabular-nums">
+        {versi && <span>v{versi}</span>}
+        {commit && <><span aria-hidden="true" className="text-slate-300">·</span><span className="font-mono">{commit}</span></>}
+        {waktuBuild && <><span aria-hidden="true" className="text-slate-300">·</span><span>{waktuBuild}</span></>}
+      </p>
+    </footer>
+  );
+}
+
+/**
+ * Bilah bawah - navigasi utama di ponsel (pola Sales): ikon garis + label
+ * kecil, aktif = aksen-700, sasaran sentuh minimal 56px. Maksimal 5 slot:
+ * Dashboard + 3 menu utama + "Lainnya".
  */
 interface MenuBaris { menu: MenuItem; item: MenuItem['items'][0]; }
 
 function MobileBottomNav({
-  primaryItems, showDashboardPanel, showTicketing, internalUrl, iframeUrl, moreActive, onHome, onMenuClick, onMore,
+  primaryItems, showDashboardPanel, showTicketing, internalUrl, iframeUrl, moreActive, onHome, onMenuClick, onMore, kaki,
 }: {
   primaryItems: MenuBaris[];
   showDashboardPanel: boolean;
@@ -2188,55 +1824,44 @@ function MobileBottomNav({
   onHome: () => void;
   onMenuClick: (item: MenuItem['items'][0], menuTitle: string) => void;
   onMore: () => void;
+  kaki?: React.ReactNode;
 }) {
+  const beranda = showDashboardPanel && !moreActive;
   return (
-    // SATU-SATUNYA navigasi mobile - tidak ada lagi sidebar desktop yang
-    // bisa muncul bersamaan (lihat penjelasan di render sidebar di atas).
     <nav aria-label="Navigasi utama"
-      className="md:hidden fixed bottom-0 left-0 right-0 z-[195] flex items-stretch bg-white border-t border-slate-200"
-      style={{ boxShadow: '0 -2px 12px rgba(0,0,0,0.06)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
-      <button type="button" onClick={onHome} aria-current={showDashboardPanel && !moreActive ? 'page' : undefined}
-        className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px]"
-        style={{ color: showDashboardPanel && !moreActive ? '#92600a' : '#64748b' }}>
-        <span className="text-lg leading-none">🏠</span>
-        <span className="text-[10px] font-bold truncate max-w-full px-1">Dashboard</span>
-      </button>
-      {primaryItems.map(({ menu, item }, idx) => {
-        const isActive = !moreActive && !showDashboardPanel && ((showTicketing && item.internal && internalUrl === item.url) || (iframeUrl === item.url));
-        return (
-          <button key={`${menu.key}-${idx}`} type="button" onClick={() => onMenuClick(item, menu.title)}
-            aria-current={isActive ? 'page' : undefined}
-            className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px] min-w-0">
-            <span className="text-lg leading-none" style={{ color: isActive ? '#92600a' : '#64748b' }}>{item.icon}</span>
-            <span className="text-[10px] font-bold truncate max-w-full px-1" style={{ color: isActive ? '#92600a' : '#64748b' }}>{item.name}</span>
-          </button>
-        );
-      })}
-      {/* More - satu-satunya pintu ke menu yang tidak muat, akun, admin
-          panel, dan sign out. Ini BUKAN membuka sidebar desktop - lembar
-          sendiri (MobileMorePanel) yang gayanya didesain untuk mobile. */}
-      <button type="button" onClick={onMore} aria-expanded={moreActive} aria-label="Menu lainnya dan akun"
-        className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px]"
-        style={{ color: moreActive ? '#92600a' : '#64748b' }}>
-        <svg aria-hidden="true" focusable="false" className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none" />
-          <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" />
-          <circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none" />
-        </svg>
-        <span className="text-[10px] font-bold truncate max-w-full px-1">More</span>
-      </button>
+      className="sidebar:hidden fixed bottom-0 inset-x-0 z-[195] bg-white/[0.97] backdrop-blur border-t border-slate-200 pb-[env(safe-area-inset-bottom)]">
+      <div className="flex">
+        <button type="button" onClick={onHome} aria-current={beranda ? 'page' : undefined}
+          className={`flex-1 min-h-[56px] flex flex-col items-center justify-center gap-0.5 py-2 ${beranda ? 'text-aksen-700' : 'text-slate-400'}`}>
+          {IkonGaris(PATH_IKON.dashboard, 19)}
+          <span className="text-[9.5px] font-bold leading-none">Dashboard</span>
+        </button>
+        {primaryItems.map(({ menu, item }, idx) => {
+          const aktif = !moreActive && !showDashboardPanel && ((showTicketing && item.internal && internalUrl === item.url) || (iframeUrl === item.url));
+          return (
+            <button key={`${menu.key}-${idx}`} type="button" onClick={() => onMenuClick(item, menu.title)}
+              aria-current={aktif ? 'page' : undefined}
+              className={`flex-1 min-w-0 min-h-[56px] flex flex-col items-center justify-center gap-0.5 py-2 ${aktif ? 'text-aksen-700' : 'text-slate-400'}`}>
+              {ikonMenu(item, undefined, 19)}
+              <span className="text-[9.5px] font-bold leading-none truncate max-w-full px-1">{item.name}</span>
+            </button>
+          );
+        })}
+        <button type="button" onClick={onMore} aria-expanded={moreActive} aria-label="Menu lainnya dan akun"
+          className={`flex-1 min-h-[56px] flex flex-col items-center justify-center gap-0.5 py-2 ${moreActive ? 'text-aksen-700' : 'text-slate-400'}`}>
+          {IkonGaris(PATH_IKON.lainnya, 19)}
+          <span className="text-[9.5px] font-bold leading-none">Lainnya</span>
+        </button>
+      </div>
+      {kaki}
     </nav>
   );
 }
 
 /**
- * MobileMorePanel - "lembar" mobile yang BUKAN sidebar desktop yang
- * disempitkan. Isinya dua kelompok: menu yang tidak muat di bottom nav
- * (kalau ada), dan Akun (Profil/Admin Panel/Sign Out) - yang di layar
- * sidebar-mode sebelumnya HANYA bisa dijangkau lewat sidebar desktop yang
- * dibuka sebagai drawer di mobile (persis keluhan user: logout susah
- * dijangkau). Di sini keduanya jadi satu tempat pasti, bergaya tombol besar
- * sentuh-ramah, bukan baris rapat ala sidebar.
+ * Panel "Lainnya" (pola Sales): kartu mengambang tepat di atas bilah bawah,
+ * berisi akun + menu yang tidak muat sebagai ubin 3 kolom, lalu Profil /
+ * Admin Panel / Keluar. Bukan sidebar desktop yang disempitkan.
  */
 function MobileMorePanel({
   buka, onTutup, currentUser, isAdmin, pendingUsers, overflowItems,
@@ -2256,78 +1881,57 @@ function MobileMorePanel({
   onAdminPanel: () => void;
   onLogout: () => void;
 }) {
+  useEffect(() => {
+    if (!buka) return;
+    const tutup = (e: KeyboardEvent) => { if (e.key === 'Escape') onTutup(); };
+    window.addEventListener('keydown', tutup);
+    return () => window.removeEventListener('keydown', tutup);
+  }, [buka, onTutup]);
+
   if (!buka) return null;
+  const ubin = 'min-h-[64px] rounded-kontrol flex flex-col items-center justify-center gap-1 px-1 transition-colors';
   return (
-    <div className="md:hidden fixed inset-0 z-[600]" role="dialog" aria-modal="true" aria-label="Menu lainnya">
-      <div aria-hidden="true" className="absolute inset-0" style={{ background: 'rgba(15,23,42,0.45)' }} onClick={onTutup} />
-      <div className="absolute left-0 right-0 bottom-0 max-h-[80vh] overflow-y-auto rounded-t-2xl bg-white shadow-2xl"
-        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 8px)' }}>
-        <div className="w-9 h-1 rounded-full bg-slate-200 mx-auto mt-2.5 mb-1" aria-hidden="true" />
-        <div className="px-4 pt-2 pb-3 flex items-center justify-between border-b border-slate-100">
-          <p className="text-sm font-bold text-slate-800">Menu Lainnya</p>
-          <button type="button" onClick={onTutup} aria-label="Tutup"
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100">
-            <svg aria-hidden="true" focusable="false" className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+    <div className="sidebar:hidden fixed inset-0 z-[190]" onClick={onTutup}>
+      <div className="absolute inset-0 bg-slate-900/30" aria-hidden="true" />
+      <div role="dialog" aria-modal="true" aria-label="Menu lainnya"
+        className="absolute inset-x-3 bottom-[calc(84px+env(safe-area-inset-bottom))] max-h-[70vh] overflow-y-auto bg-white rounded-kartu border border-slate-200 shadow-modal p-2 animate-[naik_.18s_ease-out]"
+        onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-2.5 px-2 py-2 mb-1 border-b border-slate-100">
+          <Inisial nama={currentUser?.full_name ?? ''} besar />
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] font-bold text-slate-800 truncate">{currentUser?.full_name ?? '-'}</p>
+            <p className="text-[10.5px] text-slate-400 capitalize">{currentUser?.role ?? '-'}</p>
+          </div>
         </div>
 
-        {overflowItems.length > 0 && (
-          <div className="px-2 py-2 border-b border-slate-100">
-            <p className="px-2.5 pt-1 pb-1.5 text-[10px] font-bold tracking-widest uppercase text-slate-400">Menu</p>
-            {overflowItems.map(({ menu, item }, idx) => {
-              const isActive = (showTicketing && item.internal && internalUrl === item.url) || (iframeUrl === item.url);
-              return (
-                <button key={`${menu.key}-${idx}`} type="button" onClick={() => onMenuClick(item, menu.title)}
-                  className="w-full flex items-center gap-3 px-2.5 py-3 rounded-xl text-left min-h-[44px]"
-                  style={isActive ? { background: 'rgba(200,134,29,0.10)', color: '#92600a' } : { color: '#334155' }}>
-                  <span className="text-lg flex-shrink-0" aria-hidden="true">{item.icon}</span>
-                  <span className="text-[14px] font-semibold truncate">{item.name}</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        <div className="px-2 py-2">
-          <p className="px-2.5 pt-1 pb-1.5 text-[10px] font-bold tracking-widest uppercase text-slate-400">Akun</p>
-          <div className="flex items-center gap-3 px-2.5 py-2.5">
-            <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0"
-              style={{ background: 'linear-gradient(135deg, #fde68a, #f59e0b)', color: '#78350f' }}>
-              {currentUser?.full_name?.charAt(0)?.toUpperCase() ?? 'U'}
-            </div>
-            <div className="min-w-0">
-              <p className="text-[14px] font-bold text-slate-800 truncate">{currentUser?.full_name ?? '-'}</p>
-              <p className="text-[10px] font-bold tracking-widest uppercase text-amber-600">{currentUser?.role ?? '-'}</p>
-            </div>
-          </div>
-          <button type="button" onClick={onProfil}
-            className="w-full flex items-center gap-3 px-2.5 py-3 rounded-xl text-left min-h-[44px] text-slate-700">
-            <svg aria-hidden="true" focusable="false" className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-            </svg>
-            <span className="text-[14px] font-semibold">Profil Saya</span>
+        <div className="grid grid-cols-3 gap-1">
+          {overflowItems.map(({ menu, item }, idx) => {
+            const aktif = (showTicketing && item.internal && internalUrl === item.url) || (iframeUrl === item.url);
+            return (
+              <button key={`${menu.key}-${idx}`} type="button" onClick={() => onMenuClick(item, menu.title)}
+                aria-current={aktif ? 'page' : undefined}
+                className={`${ubin} ${aktif ? 'bg-aksen-50 text-aksen-700' : 'text-slate-600 hover:bg-slate-50'}`}>
+                {ikonMenu(item, undefined, 19)}
+                <span className="text-[11px] font-bold text-center leading-tight">{item.name}</span>
+              </button>
+            );
+          })}
+          <button type="button" onClick={onProfil} className={`${ubin} text-slate-600 hover:bg-slate-50`}>
+            {IkonGaris(PATH_IKON.profil, 19)}
+            <span className="text-[11px] font-bold text-center leading-tight">Profil Saya</span>
           </button>
           {isAdmin && (
-            <button type="button" onClick={onAdminPanel}
-              className="w-full flex items-center gap-3 px-2.5 py-3 rounded-xl text-left min-h-[44px] text-slate-700">
-              <svg aria-hidden="true" focusable="false" className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              <span className="text-[14px] font-semibold flex-1">Users & Roles / Settings</span>
+            <button type="button" onClick={onAdminPanel} className={`${ubin} relative text-slate-600 hover:bg-slate-50`}>
+              {IkonGaris(PATH_IKON.admin, 19)}
+              <span className="text-[11px] font-bold text-center leading-tight">Admin Panel</span>
               {pendingUsers > 0 && (
-                <span className="text-[10px] font-black bg-red-500 text-white rounded-full px-1.5 py-0.5 leading-none flex-shrink-0">{pendingUsers}</span>
+                <span className="absolute top-1.5 right-2 text-[9px] font-black bg-[#e34948] text-white rounded-full px-1.5 py-0.5 leading-none">{pendingUsers}</span>
               )}
             </button>
           )}
-          <button type="button" onClick={onLogout}
-            className="w-full flex items-center gap-3 px-2.5 py-3 rounded-xl text-left min-h-[44px] text-red-600">
-            <svg aria-hidden="true" focusable="false" className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-            </svg>
-            <span className="text-[14px] font-bold">Sign Out</span>
+          <button type="button" onClick={onLogout} className={`${ubin} text-[#e34948] hover:bg-red-50`}>
+            {IkonGaris(PATH_IKON.keluar, 19)}
+            <span className="text-[11px] font-bold text-center leading-tight">Keluar</span>
           </button>
         </div>
       </div>

@@ -26,6 +26,49 @@
   --merek-utama-2:      #be123c;
   --merek-aksen:        #c8861d;
   --merek-utama-tembus: rgba(225, 29, 72, 0.1);
+
+  /* Palet aksen-* (pola Sales Management Platform), format "R G B". Nilai di
+     sini diturunkan dari warna utama bawaan (#e11d48 / #be123c) dengan rumus
+     yang SAMA dengan tulisWarnaKeCSS - jadi sebelum dan sesudah JavaScript
+     jalan warnanya identik, tidak berkedip. */
+  --aksen-50:  253 241 244;
+  --aksen-100: 251 223 229;
+  --aksen-200: 247 192 204;
+  --aksen-300: 241 151 171;
+  --aksen-400: 234 97 127;
+  --aksen-500: 229 61 98;
+  --aksen-600: 225 29 72;
+  --aksen-700: 203 26 65;
+  --aksen-800: 181 17 57;
+  --aksen-900: 143 14 45;
+}
+
+/* Cincin fokus hanya untuk navigasi papan tombol, mengikuti warna merek. */
+:focus-visible {
+  outline: 2px solid rgb(var(--aksen-600));
+  outline-offset: 2px;
+}
+
+/* Angka di kartu KPI & tabel selebar sama - kartu tidak "bergoyang" saat
+   data disegarkan. */
+.tabular-nums { font-variant-numeric: tabular-nums; }
+
+/* Deretan pintasan header digulung mendatar di layar sempit tanpa bilah
+   gulir yang menutupi lencana paling kanan. */
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* Isi halaman baru masuk saat pindah menu. Frame akhir `none` (bukan
+   translateY(0)) - lihat aturan wajib di blok animasi di bawah. */
+@keyframes halaman-masuk {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+.animasi-halaman { animation: halaman-masuk .32s cubic-bezier(.2, .7, .2, 1) backwards; }
+
+@keyframes naik {
+  from { opacity: 0; transform: translateY(16px) scale(.98); }
+  to   { opacity: 1; transform: none; }
 }
 
 /* ── Prevent white background flash on zoom/scale ───────────────────────── */

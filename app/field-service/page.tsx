@@ -29,6 +29,7 @@ import {
   PageHeader, FormField, EmptyState, SectionHeaderSmall, ConfirmDialog, MiniPieChart,
   SearchableSelect, Modal, TombolModal, DonutLegenda, TabelRingkas, type ConfirmState,
   KartuOperasional as Kartu, JudulPanel, UbinKpi, DialogBesar, KosongOperasional as Kosong, HeaderDrill,
+  Masonry,
 } from '@/components/shared';
 import {
   ambilOverview, ambilBuildingProgress, CYCLE_STATUS_LABEL, persen, warnaProgress, rentangTanggal,
@@ -329,7 +330,11 @@ function CentangSemua({ ids, dipilih, toggleSemua }: { ids: string[]; dipilih: S
   );
 }
 
-const TAB_VALUES: Tab[] = ['locations', 'content', 'review', 'cycles'];
+// 'content' sengaja TIDAK lagi bisa dibuka: siklus mingguan berjalan otomatis
+// tanpa memilih konten (masukan user). ContentTab dan datanya tetap ada di
+// kode/DB, hanya tidak dijangkau dari navigasi; ?tab=content lama jatuh ke
+// halaman Locations.
+const TAB_VALUES: Tab[] = ['locations', 'review', 'cycles'];
 
 /** Baca ?tab= dari URL sekali di awal - dipakai saat sidebar dashboard
  *  membuka salah satu sub-item Field Service secara langsung. */
@@ -673,7 +678,7 @@ export default function FieldServicePage() {
           </div>
         )}
 
-        {tab === 'content' && (
+        {false && tab === 'content' && (
           <ContentTab
             selectedProjectId={selectedProjectId}
             contents={contents}
@@ -1846,17 +1851,18 @@ function LocationsTab({
               <UbinKpi ikon={AlertTriangle} label="Belum Ada PIC" nilai={belumAdaPic} warna="#d97706" sub="Lokasi aktif" />
               <UbinKpi ikon={Users} label="PIC Bertugas" nilai={new Set(Object.values(picIdsLokasi).flat()).size} warna="#059669" sub="Orang" />
             </div>
-            {/* Tiga sudut pandang berdampingan: seberapa TERTANGANI (cakupan
-                PIC), seberapa TERSEBAR beban TV-nya (per wilayah), dan
-                rinciannya per wilayah dalam angka. Dua donat saja membuat
-                pengguna harus menebak jumlah pastinya.
-                Dua donat SEMPIT + rincian wilayah LEBAR - donat cuma perlu
-                ruang seukuran dirinya sendiri, sementara rincian per wilayah
-                (4 kolom angka) justru butuh lebar. */}
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[minmax(0,260px)_minmax(0,300px)_minmax(0,1fr)] gap-3 lg:flex-shrink-0 items-stretch">
-              <Kartu>
+            {/* Tiga sudut pandang: seberapa TERTANGANI (cakupan PIC),
+                seberapa TERSEBAR beban TV-nya (per wilayah), dan rinciannya
+                per wilayah dalam angka. Lewat <Masonry> (bukan grid
+                items-stretch seragam): "Ringkasan per Wilayah" (tabel 5
+                kolom, butuh lebar) diberi span:2, dua donat sempit di
+                sisanya bertumpuk di kolom yang tersisa - bento yang
+                disengaja, tetap rata di bawah. */}
+            <Masonry columns={3} minColumnWidth={260} gap={12} className="lg:flex-shrink-0"
+              spans={{ 'ringkasan-per-wilayah': 2 }}>
+              <Kartu key="cakupan-pic">
                 <JudulPanel ikon={Users} judul="Cakupan PIC" />
-                <DonutLegenda ukuran={76} labelPusat="Lokasi"
+                <DonutLegenda ukuran={60} labelPusat="Lokasi"
                   data={[
                     { label: 'Tercakup', value: jmlTercakup, color: '#059669',
                       onClick: () => setFilterCakupan(filterCakupan === 'Tercakup' ? null : 'Tercakup'),
@@ -1870,7 +1876,7 @@ function LocationsTab({
                   ]} />
               </Kartu>
 
-              <Kartu>
+              <Kartu key="titik-tv-per-wilayah">
                 <JudulPanel ikon={MapIconLucide} judul="Titik TV per Wilayah" />
                 {(() => {
                   // Menghitung TITIK TV per wilayah, bukan jumlah lokasi: satu
@@ -1884,7 +1890,7 @@ function LocationsTab({
                     hitung.set(nama, (hitung.get(nama) ?? 0) + (jumlahTitik[l.id] ?? 0));
                   }
                   return (
-                    <DonutLegenda ukuran={76} labelPusat="Titik TV"
+                    <DonutLegenda ukuran={60} labelPusat="Titik TV"
                       data={Array.from(hitung.entries()).map(([nama, n], i) => ({
                         label: nama, value: n, color: PALET[i % PALET.length],
                         onClick: () => setFilterAreaNama(filterAreaNama === nama ? null : nama),
@@ -1894,7 +1900,7 @@ function LocationsTab({
                 })()}
               </Kartu>
 
-              <Kartu>
+              <Kartu key="ringkasan-per-wilayah">
                 <JudulPanel ikon={Building2} judul="Ringkasan per Wilayah"
                   aksi={<span className="text-[10px] text-slate-400">klik baris untuk menyaring</span>} />
                 {(() => {
@@ -1912,6 +1918,9 @@ function LocationsTab({
                   }).sort((x, y) => y.tv - x.tv);
                   const tvMaks = Math.max(1, ...baris.map(b => b.tv));
                   return (
+                    // tinggiMaks besar - kartu ini melebar (span:2) di
+                    // komposisi bento, tabel harus "auto show", bukan
+                    // disembunyikan di balik scroll kecil.
                     <TabelRingkas
                       kolom={[
                         { judul: 'Wilayah' },
@@ -1921,6 +1930,7 @@ function LocationsTab({
                         { judul: 'Perlu PIC', kanan: true, lebar: '15%' },
                       ]}
                       baris={baris}
+                      tinggiMaks={2000}
                       onKlikBaris={b => setFilterAreaNama(filterAreaNama === b.nama ? null : b.nama)}
                       kunci={b => ({
                         id: b.nama,
@@ -1943,7 +1953,7 @@ function LocationsTab({
                   );
                 })()}
               </Kartu>
-            </div>
+            </Masonry>
           </>
         )}
         <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden lg:flex-1 lg:min-h-0 lg:flex lg:flex-col">
@@ -2306,23 +2316,27 @@ function ContentTab({ selectedProjectId, contents, bolehKelola, onReload, berita
                   user via screenshot), jadi library kecil langsung ke tabel
                   di bawah tanpa basa-basi tiga panel ini. */}
               {contents.length >= 4 && (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[minmax(0,240px)_minmax(0,240px)_minmax(0,1fr)] gap-3 mb-4 items-stretch">
-                <Kartu>
+              // Lewat <Masonry>: "Paling Banyak Dipakai" (tabel, butuh
+              // lebar) diberi span:2, dua donat sempit bertumpuk di kolom
+              // sisanya - bento, tetap rata di bawah.
+              <Masonry columns={3} minColumnWidth={240} gap={12} className="mb-4"
+                spans={{ 'paling-banyak-dipakai': 2 }}>
+                <Kartu key="status-content">
                   <JudulPanel ikon={CheckCircle2} judul="Status Content" />
-                  <DonutLegenda ukuran={76} labelPusat="Content" data={[
+                  <DonutLegenda ukuran={60} labelPusat="Content" data={[
                     { label: 'Aktif', value: aktif, color: '#059669' },
                     { label: 'Arsip', value: arsip, color: '#94a3b8' },
                   ]} />
                 </Kartu>
-                <Kartu>
+                <Kartu key="masa-berlaku">
                   <JudulPanel ikon={CalendarDays} judul="Masa Berlaku" />
-                  <DonutLegenda ukuran={76} labelPusat="Content" data={[
+                  <DonutLegenda ukuran={60} labelPusat="Content" data={[
                     { label: 'Berlaku', value: berlaku, color: '#2a78d6' },
                     { label: 'Akan Datang', value: akanDatang, color: '#7c3aed' },
                     { label: 'Kedaluwarsa', value: kedaluwarsa, color: '#cbd5e1' },
                   ]} />
                 </Kartu>
-                <Kartu>
+                <Kartu key="paling-banyak-dipakai">
                   <JudulPanel ikon={ImageIcon} judul="Paling Banyak Dipakai"
                     aksi={<span className="text-[10px] text-slate-400">berdasar jumlah assignment aktif</span>} />
                   {teratas.every(c => (usageContent[c.id] ?? 0) === 0) ? (
@@ -2346,7 +2360,7 @@ function ContentTab({ selectedProjectId, contents, bolehKelola, onReload, berita
                       })} />
                   )}
                 </Kartu>
-              </div>
+              </Masonry>
               )}
             </>
           );

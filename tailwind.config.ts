@@ -57,6 +57,17 @@ const config: Config = {
         formulir: {
           raw: '(min-width: 900px), ((pointer: fine) and (min-width: 640px))',
         },
+
+        /**
+         * Ambang munculnya sidebar (diambil dari Sales Management Platform).
+         * MURNI lebar, tanpa syarat pointer: mode "Situs desktop" Chrome ponsel
+         * melaporkan ~980px lalu mengecilkan halaman - dengan ambang lg
+         * (1024px) yang didapat justru bilah bawah ponsel + teks yang
+         * diperkecil 0,7x. Pada 900px ke atas sidebar memang muat.
+         */
+        sidebar: { raw: '(min-width: 900px)' },
+        /** Layar sentuh yang melapor selebar desktop - huruf header dinaikkan. */
+        sentuhlebar: { raw: '(pointer: coarse) and (min-width: 900px)' },
       },
 
       /**
@@ -77,6 +88,9 @@ const config: Config = {
         dropdown: '0 8px 32px rgba(0,0,0,0.18)',
         modal: '0 8px 40px rgba(0,0,0,0.18)',
         toast: '0 4px 32px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.06)',
+        // Bayangan rendah khusus kartu bento - kartu yang rapat bersebelahan
+        // tidak saling "menumpuk" secara visual.
+        bento: '0 1px 3px rgba(15,23,42,0.06), 0 8px 24px -12px rgba(15,23,42,0.18)',
       },
       colors: {
         /** Warna merek dari database - lihat tulisWarnaKeCSS di lib/merek.ts. */
@@ -85,6 +99,26 @@ const config: Config = {
           dua: 'var(--merek-utama-2)',
           aksen: 'var(--merek-aksen)',
           tembus: 'var(--merek-utama-tembus)',
+        },
+        /**
+         * Palet aksen 50-900 (pola Sales Management Platform). Nilainya
+         * variabel CSS yang DITURUNKAN dari warna utama merek oleh
+         * tulisWarnaKeCSS - warna yang dipilih Admin di Dashboard Setting
+         * langsung mengalir ke seluruh kelas aksen-* tanpa menyentuh satu
+         * komponen pun. Format "R G B" supaya alpha Tailwind tetap jalan.
+         */
+        aksen: {
+          50:  'rgb(var(--aksen-50)  / <alpha-value>)',
+          100: 'rgb(var(--aksen-100) / <alpha-value>)',
+          200: 'rgb(var(--aksen-200) / <alpha-value>)',
+          300: 'rgb(var(--aksen-300) / <alpha-value>)',
+          400: 'rgb(var(--aksen-400) / <alpha-value>)',
+          500: 'rgb(var(--aksen-500) / <alpha-value>)',
+          600: 'rgb(var(--aksen-600) / <alpha-value>)',
+          700: 'rgb(var(--aksen-700) / <alpha-value>)',
+          800: 'rgb(var(--aksen-800) / <alpha-value>)',
+          900: 'rgb(var(--aksen-900) / <alpha-value>)',
+          DEFAULT: 'rgb(var(--aksen-700) / <alpha-value>)',
         },
       },
     },

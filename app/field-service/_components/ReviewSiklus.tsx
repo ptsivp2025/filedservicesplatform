@@ -29,7 +29,7 @@ import { kirimNotifikasi } from '@/lib/notifikasi/router';
 import {
   ConfirmDialog, SearchableSelect, DonutLegenda, TabelRingkas, type ConfirmState,
   KartuOperasional as Kartu, JudulPanel, UbinKpi, Bar2, BarisDrill, LencanaMasalah,
-  KosongOperasional as Kosong, HeaderDrill,
+  KosongOperasional as Kosong, HeaderDrill, Masonry,
 } from '@/components/shared';
 import {
   ambilCycles, cycleBerjalan, ambilOverview, ambilBuildingProgress, ambilTvList, projectAktif,
@@ -322,13 +322,19 @@ export function ReviewSiklus({ projectId, bolehReview, beritahu }: {
             <UbinKpi ikon={RotateCcw} label="Diminta diulang" nilai={overview.revision_tv} warna={C.revisi} />
           </div>
 
-          {/* Tiga sudut pandang berdampingan, bukan dibatasi dua kolom
-              kiri-kanan: seberapa JAUH progresnya, APA komposisi hasilnya,
-              dan wilayah MANA yang paling butuh perhatian reviewer duluan. */}
-          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,280px)_minmax(0,280px)_minmax(0,1fr)] gap-3 items-stretch">
-            <Kartu>
+          {/* Tiga sudut pandang - bukan grid 3-kolom seragam (yang men-stretch
+              SEMUA kartu ke tinggi paling tinggi, dan dulu memaksa "Wilayah
+              Perlu Perhatian" jadi 1fr sementara 2 kartu lain 280px tetap -
+              itu sumber celah kosong yang dikeluhkan user). Lewat <Masonry>:
+              "Wilayah Perlu Perhatian" (tabel, wajar butuh lebar) diberi
+              span:2, dua kartu sempit di sisanya (Progres Keseluruhan +
+              Komposisi Hasil) bertumpuk di kolom yang tersisa - pola bento
+              yang disengaja, dan tetap rata di bawah berkat <Masonry>. */}
+          <Masonry columns={3} minColumnWidth={260} gap={12}
+            spans={{ 'wilayah-perlu-perhatian': 2 }}>
+            <Kartu key="progres-keseluruhan">
               <JudulPanel ikon={ShieldCheck} judul="Progres Keseluruhan" ket="Persentase TV yang benar-benar terpasang" />
-              <p className="text-[28px] font-bold tabular-nums leading-none" style={{ color: warnaProgress(pct) }}>
+              <p className="text-[22px] font-bold tabular-nums leading-none" style={{ color: warnaProgress(pct) }}>
                 {pct}%
               </p>
               <p className="text-[12px] text-slate-500 mt-1.5 tabular-nums mb-2.5">
@@ -336,9 +342,9 @@ export function ReviewSiklus({ projectId, bolehReview, beritahu }: {
               </p>
               <Bar2 pct={pct} tinggi={10} />
             </Kartu>
-            <Kartu>
+            <Kartu key="komposisi-hasil">
               <JudulPanel ikon={CheckCircle2} judul="Komposisi Hasil" />
-              <DonutLegenda ukuran={80} labelPusat="Total TV"
+              <DonutLegenda ukuran={64} labelPusat="Total TV"
                 data={[
                   { label: 'Disetujui', value: overview.verified_tv, color: C.verified },
                   { label: 'Menunggu keputusan', value: menunggu, color: '#B45309' },
@@ -347,7 +353,7 @@ export function ReviewSiklus({ projectId, bolehReview, beritahu }: {
                   { label: 'Belum dikerjakan', value: overview.pending_tv, color: C.belum },
                 ]} />
             </Kartu>
-            <Kartu>
+            <Kartu key="wilayah-perlu-perhatian">
               <JudulPanel ikon={CalendarDays} judul="Wilayah Perlu Perhatian"
                 ket="Diurutkan dari progres paling rendah — klik untuk langsung memeriksa gedungnya." />
               {(() => {
@@ -369,9 +375,15 @@ export function ReviewSiklus({ projectId, bolehReview, beritahu }: {
                 // Sekarang batang progres yang melar mengisi ruang itu -
                 // sekalian jadi gauge yang lebih presisi.
                 return (
+                  // tinggiMaks besar (bukan default 148px) - kartu ini
+                  // sekarang melebar penuh (span:2) di komposisi bento,
+                  // dan user minta tabel "auto show, jangan diminimize":
+                  // semua wilayah langsung kelihatan, bukan disembunyikan
+                  // di balik scroll kecil di dalam kartu.
                   <TabelRingkas
                     kolom={[{ judul: 'Wilayah', lebar: '140px' }, { judul: 'Progres' }, { judul: 'Masalah', kanan: true, lebar: '64px' }]}
                     baris={baris}
+                    tinggiMaks={2000}
                     onKlikBaris={b => setCariGedung(b.nama)}
                     kunci={b => ({
                       id: b.nama,
@@ -389,7 +401,7 @@ export function ReviewSiklus({ projectId, bolehReview, beritahu }: {
                 );
               })()}
             </Kartu>
-          </div>
+          </Masonry>
         </>
       )}
 

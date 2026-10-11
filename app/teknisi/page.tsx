@@ -495,13 +495,6 @@ export default function TeknisiPage() {
                       <p className="font-bold text-slate-800 text-sm truncate">{t.locationName}</p>
                       {t.pointName && <p className="text-xs text-slate-400">{t.pointName}</p>}
                       {t.address && <p className="text-xs text-slate-400 mt-0.5 truncate">{t.address}</p>}
-                      {t.contentName && (
-                        <div className="mt-1.5 rounded-lg bg-indigo-50 border border-indigo-100 px-2 py-1.5 space-y-0.5">
-                          <p className="text-[10px] font-bold text-indigo-700 uppercase tracking-wide">🖼️ {t.contentName} (v{t.contentVersion})</p>
-                          <p className="text-[10px] text-indigo-500">Content Period (tayang di klien): {t.contentValidFrom} s/d {t.contentValidUntil}</p>
-                          <p className="text-[10px] text-slate-400">Deployment Date (pemasangan hari ini): {todayId}</p>
-                        </div>
-                      )}
                     </div>
                     {st && (
                       <span className="text-[10px] font-bold uppercase px-2 py-1 rounded-full flex-shrink-0 whitespace-nowrap"
@@ -835,11 +828,6 @@ function CheckWizard({ task, mode, userId, onClose, onDone }: {
         <div className="mt-3 bg-white rounded-xl px-4 py-3">
           <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">{task.locationName}{task.pointName ? ` · ${task.pointName}` : ''}</p>
           <p className="text-sm font-bold text-slate-800 mt-0.5">Radius {task.radiusM}m</p>
-          {task.contentName && (
-            <p className="text-[11px] text-indigo-600 mt-1">
-              🖼️ {task.contentName} (v{task.contentVersion}) — Content Period {task.contentValidFrom} s/d {task.contentValidUntil}
-            </p>
-          )}
         </div>
       </div>
 
@@ -1057,7 +1045,6 @@ function TvChecklistModal({ task, userId, onClose }: { task: Task; userId: strin
         </div>
         <div className="mt-3 bg-white rounded-xl px-4 py-3">
           <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">{task.locationName}</p>
-          {task.contentName && <p className="text-xs text-indigo-600 mt-0.5">🖼️ {task.contentName} (v{task.contentVersion})</p>}
         </div>
       </div>
 

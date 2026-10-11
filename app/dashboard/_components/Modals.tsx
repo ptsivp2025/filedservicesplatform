@@ -8,4 +8,4 @@
 export { AccountSettingsInline } from './modal-akun';
 export { UserProfileModal } from './modal-profil';
 export { NotifBell, NotificationBar } from './modal-notifikasi';
-export { AdminPanelModal } from './modal-admin-panel';
+export { AdminPanelHalaman } from './modal-admin-panel';

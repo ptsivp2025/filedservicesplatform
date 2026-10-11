@@ -626,19 +626,21 @@ export function ControlRoomWidget({ user }: WidgetProps) {
                      identitasnya stabil walau "Perlu Perhatian"/"Progres
                      per PIC" kadang tidak dirender (render kondisional). */}
               <SectionHeaderSmall icon="📈" title="Progres" warna="#ffffff" chip />
-              {/* 4 kolom (bukan 3) - section ini tepat berisi 4 kartu, jadi
-                  4 kolom berarti tiap kartu dapat kolomnya sendiri (bukan
-                  ditumpuk), lebih ringkas secara vertikal (diminta user:
-                  "menghemat penglihatan"). minColumnWidth diturunkan supaya
-                  tetap otomatis mundur ke 3/2/1 kolom di layar yang lebih
-                  sempit, bukan memaksa 4 kolom sempit yang tidak muat. */}
-              <Masonry columns={4} minColumnWidth={230} gap={12}>
+              {/* Kembali ke 3 kolom (bukan 4 kolom "1 kartu per kolom" -
+                  user menganggap itu KAKU, dia ingin variasi genuine: ada
+                  kolom yang cuma 1 kartu, ada yang bertumpuk 2-3, tapi
+                  batas bawah tetap rata). Dengan 4 kartu di 3 kolom, satu
+                  kolom OTOMATIS dapat 2 kartu bertumpuk (dipilih algoritma
+                  berdasar tinggi asli saat itu, bukan dipaksa di kode) -
+                  susunannya bisa beda tiap kali data berubah, bukan pola
+                  tetap yang terasa mekanis. */}
+              <Masonry columns={3} minColumnWidth={260} gap={12}>
                 <Kartu key="progres-siklus">
                   <JudulPanel ikon={Activity} judul="Progres Siklus"
                     ket="Persentase TV yang benar-benar terpasang" />
                   <div className="flex items-end justify-between gap-3 mb-2.5">
                     <div>
-                      <p className="text-[30px] font-bold tabular-nums leading-none tracking-tight"
+                      <p className="text-[24px] font-bold tabular-nums leading-none tracking-tight"
                         style={{ color: warnaProgress(pct) }}>{pct}%</p>
                       <p className="text-[12px] text-slate-500 mt-1.5 tabular-nums">
                         {overview.completed_tv.toLocaleString('id-ID')} dari {overview.total_tv.toLocaleString('id-ID')} TV
@@ -680,7 +682,7 @@ export function ControlRoomWidget({ user }: WidgetProps) {
                   ) : (
                     <div style={{ width: '100%', height: Math.max(150, dataWilayah.length * 34 + 26) }}>
                       <ResponsiveContainer>
-                        <BarChart data={dataWilayah} layout="vertical" barSize={15}
+                        <BarChart data={dataWilayah} layout="vertical" barSize={11}
                           margin={{ top: 0, right: 10, left: 0, bottom: 0 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke={C.garis} horizontal={false} />
                           <XAxis type="number" tick={{ fontSize: 10, fill: C.redup }} tickLine={false} axisLine={false} />
@@ -715,9 +717,9 @@ export function ControlRoomWidget({ user }: WidgetProps) {
                     <Kosong judul="Belum ada pekerjaan tercatat"
                       teks="Grafik ini terisi begitu PIC mulai menandai TV di lapangan." />
                   ) : (
-                    <div style={{ width: '100%', height: 150 }}>
+                    <div style={{ width: '100%', height: 125 }}>
                       <ResponsiveContainer>
-                        <BarChart data={dataHarian} barSize={26} margin={{ top: 4, right: 6, left: -22, bottom: 0 }}>
+                        <BarChart data={dataHarian} barSize={20} margin={{ top: 4, right: 6, left: -22, bottom: 0 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke={C.garis} vertical={false} />
                           <XAxis dataKey="nama" tick={{ fontSize: 10, fill: C.redup }} tickLine={false} axisLine={false} />
                           <YAxis tick={{ fontSize: 10, fill: C.redup }} tickLine={false} axisLine={false} width={34} allowDecimals={false} />
@@ -737,7 +739,7 @@ export function ControlRoomWidget({ user }: WidgetProps) {
                     <Kosong judul="Belum cukup data"
                       teks="Tren muncul setelah ada minimal dua siklus. Satu titik bukan tren." />
                   ) : (
-                    <div style={{ width: '100%', height: 168 }}>
+                    <div style={{ width: '100%', height: 140 }}>
                       <ResponsiveContainer>
                         <AreaChart data={dataTren} margin={{ top: 4, right: 6, left: -22, bottom: 0 }}>
                           <defs>
@@ -760,13 +762,19 @@ export function ControlRoomWidget({ user }: WidgetProps) {
               </Masonry>
 
               <SectionHeaderSmall icon="🔍" title="Analisis Masalah" warna="#ffffff" chip />
-              {/* 4 kolom - sama seperti section Progres, section ini juga
-                  tepat 4 kartu. */}
-              <Masonry columns={4} minColumnWidth={230} gap={12}>
+              {/* 3 kolom, dan "Perlu Perhatian" (daftar gedung bermasalah -
+                  nama gedung, wilayah, PIC, badge masalah dalam satu baris)
+                  diberi span:2 supaya tidak dijejalkan ke lebar kolom
+                  sesempit donat/chart di sebelahnya. Sisa 1 kolom menampung
+                  3 kartu lain bertumpuk - kombinasi "1 kartu lebar" +
+                  "beberapa kartu sempit bertumpuk" inilah pola bento yang
+                  diminta user, bukan grid kolom seragam. */}
+              <Masonry columns={3} minColumnWidth={260} gap={12}
+                spans={{ 'perlu-perhatian': 2 }}>
                 <Kartu key="komposisi-status-tv">
                   <JudulPanel ikon={Tv} judul="Komposisi Status TV"
                     ket="Klik salah satu untuk melihat daftar TV-nya" />
-                  <DonutLegenda ukuran={86} labelPusat="Total TV"
+                  <DonutLegenda ukuran={68} labelPusat="Total TV"
                     data={[
                       { label: 'Selesai', value: overview.completed_tv, color: C.selesai,
                         onClick: () => setDrill({ level: 'filter', status: 'COMPLETED', judul: 'TV yang sudah selesai' }) },
@@ -789,7 +797,7 @@ export function ControlRoomWidget({ user }: WidgetProps) {
                   ) : (
                     <div style={{ width: '100%', height: Math.max(150, dataPenyebab.length * 34 + 26) }}>
                       <ResponsiveContainer>
-                        <BarChart data={dataPenyebab} layout="vertical" barSize={15}
+                        <BarChart data={dataPenyebab} layout="vertical" barSize={11}
                           margin={{ top: 0, right: 26, left: 0, bottom: 0 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke={C.garis} horizontal={false} />
                           <XAxis type="number" tick={{ fontSize: 10, fill: C.redup }} tickLine={false} axisLine={false} allowDecimals={false} />
@@ -815,7 +823,13 @@ export function ControlRoomWidget({ user }: WidgetProps) {
                         aksi={<span className="text-[10px] font-bold px-1.5 py-0.5 rounded tabular-nums"
                           style={{ color: '#B91C1C', background: '#FEE2E2' }}>{attention.length} gedung</span>} />
                     </div>
-                    <div className="divide-y divide-slate-50 max-h-[340px] overflow-y-auto border-t border-slate-100">
+                    {/* Tanpa max-h/overflow-y-auto SENGAJA - user minta
+                        daftar seperti ini "auto show, jangan diminimize":
+                        biar kartu tumbuh setinggi isinya (halaman yang
+                        gulir, bukan kotak kecil di dalamnya) supaya semua
+                        gedung bermasalah langsung kelihatan tanpa perlu
+                        scroll di dalam scroll. */}
+                    <div className="divide-y divide-slate-50 border-t border-slate-100">
                       {attention.map(a => (
                         <BarisDrill key={a.location_id}
                           judul={a.location_name}
@@ -839,7 +853,7 @@ export function ControlRoomWidget({ user }: WidgetProps) {
                     const belumTersentuh = Number(sebaran.find(s => s.kelompok === 'Belum tersentuh')?.jumlah ?? 0);
                     return (
                       <>
-                        <DonutLegenda ukuran={86} labelPusat="Gedung"
+                        <DonutLegenda ukuran={68} labelPusat="Gedung"
                           data={sebaran.map(s => ({
                             label: s.kelompok,
                             value: Number(s.jumlah),
@@ -875,7 +889,7 @@ export function ControlRoomWidget({ user }: WidgetProps) {
                           </button>
                         ) : undefined} />
                     </div>
-                    <div className="divide-y divide-slate-50 max-h-[340px] overflow-y-auto border-t border-slate-100">
+                    <div className="divide-y divide-slate-50 border-t border-slate-100">
                       {(semuaPic ? pics : pics.slice(0, 6)).map(p => (
                         <BarisDrill key={p.pic_user_id ?? p.pic_name}
                           judul={p.pic_name}

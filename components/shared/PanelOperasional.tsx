@@ -40,7 +40,7 @@ export function Kartu({ children, className = '', padat }: {
   children: React.ReactNode; className?: string; padat?: boolean;
 }) {
   return (
-    <section className={`bg-white rounded-xl border border-slate-200 ${padat ? '' : 'p-3.5'} ${className}`}
+    <section className={`bg-white rounded-xl border border-slate-200 ${padat ? '' : 'p-3'} ${className}`}
       style={{ boxShadow: '0 1px 2px rgba(15,23,42,0.04)' }}>
       {children}
     </section>
@@ -51,12 +51,12 @@ export function JudulPanel({ ikon: Ikon, judul, ket, aksi }: {
   ikon: IkonOperasional; judul: string; ket?: string; aksi?: React.ReactNode;
 }) {
   return (
-    <header className="flex items-start justify-between gap-2 mb-3">
-      <div className="flex items-start gap-2 min-w-0">
-        <span className="mt-0.5 flex-shrink-0 text-slate-400" aria-hidden="true"><Ikon size={15} /></span>
+    <header className="flex items-start justify-between gap-2 mb-2">
+      <div className="flex items-start gap-1.5 min-w-0">
+        <span className="mt-0.5 flex-shrink-0 text-slate-400" aria-hidden="true"><Ikon size={13} /></span>
         <div className="min-w-0">
-          <h3 className="text-[12px] font-bold uppercase tracking-wider text-slate-600 leading-none">{judul}</h3>
-          {ket && <p className="text-[11px] text-slate-400 mt-1 leading-snug">{ket}</p>}
+          <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-600 leading-none">{judul}</h3>
+          {ket && <p className="text-[10px] text-slate-400 mt-1 leading-snug">{ket}</p>}
         </div>
       </div>
       {aksi}
@@ -71,24 +71,24 @@ export function UbinKpi({ ikon: Ikon, label, nilai, sub, warna, onClick, aktif }
 }) {
   const isi = (
     <>
-      <div className="flex items-center justify-between gap-2 mb-2">
-        <span className="w-7 h-7 rounded-lg grid place-items-center flex-shrink-0"
+      <div className="flex items-center justify-between gap-2 mb-1.5">
+        <span className="w-6 h-6 rounded-lg grid place-items-center flex-shrink-0"
           style={{ background: `${warna}14`, color: warna }} aria-hidden="true">
-          <Ikon size={15} />
+          <Ikon size={13} />
         </span>
         {aktif && (
           <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
             style={{ color: warna, background: `${warna}14` }}>disaring</span>
         )}
       </div>
-      <p className="text-[21px] font-bold tabular-nums leading-none text-slate-900">
+      <p className="text-[18px] font-bold tabular-nums leading-none text-slate-900">
         {typeof nilai === 'number' ? nilai.toLocaleString('id-ID') : nilai}
       </p>
-      <p className="text-[11px] font-semibold text-slate-500 mt-1.5 leading-tight">{label}</p>
-      {sub && <p className="text-[10px] text-slate-400 mt-0.5 leading-tight truncate">{sub}</p>}
+      <p className="text-[10px] font-semibold text-slate-500 mt-1 leading-tight">{label}</p>
+      {sub && <p className="text-[9px] text-slate-400 mt-0.5 leading-tight truncate">{sub}</p>}
     </>
   );
-  const dasar = 'bg-white rounded-xl border p-3 text-left transition-colors duration-200 w-full';
+  const dasar = 'bg-white rounded-xl border p-2.5 text-left transition-colors duration-200 w-full';
   if (!onClick) {
     return <div className={`${dasar} border-slate-200`} style={{ boxShadow: '0 1px 2px rgba(15,23,42,0.04)' }}>{isi}</div>;
   }
@@ -128,16 +128,26 @@ export function BarisDrill({ judul, sub, kanan, pct, onClick }: {
   // valid: React membatalkan hydration lalu me-render ulang seluruh baris
   // dari nol di client, yang terlihat sebagai kedipan/tata-letak kacau
   // sesaat sebelum baris ini stabil kembali.
+  // Progress bar dulu dirender DI BAWAH judul+sub (baris sendiri) - "value
+  // di bawah value", boros tinggi per baris (dikeluhkan user via
+  // screenshot dibanding tabel biasa yang satu baris rapat). Sekarang bar
+  // jadi KOLOM sendiri di tengah, sebaris dengan judul dan `kanan` - satu
+  // baris rapat seperti tabel, bukan dua baris per item.
   return (
     <div role={onClick ? 'button' : undefined} tabIndex={onClick ? 0 : undefined}
       onClick={onClick}
       onKeyDown={onClick ? (e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }) : undefined}
-      className={`w-full text-left px-3.5 py-2.5 transition-colors duration-200 flex items-center gap-3 focus:outline-none focus-visible:bg-slate-50 ${onClick ? 'hover:bg-slate-50 cursor-pointer' : 'cursor-default'}`}>
+      className={`w-full text-left px-3.5 py-2 transition-colors duration-200 flex items-center gap-3 focus:outline-none focus-visible:bg-slate-50 ${onClick ? 'hover:bg-slate-50 cursor-pointer' : 'cursor-default'}`}>
       <div className="min-w-0 flex-1">
-        <span className="font-semibold text-slate-800 text-[13px] truncate block">{judul}</span>
-        {sub && <span className="text-[11px] text-slate-500 mt-0.5 truncate block">{sub}</span>}
-        {typeof pct === 'number' && <div className="mt-1.5 max-w-xs"><Bar2 pct={pct} /></div>}
+        <span className="font-semibold text-slate-800 text-[12px] truncate block">{judul}</span>
+        {sub && <span className="text-[10px] text-slate-500 truncate block">{sub}</span>}
       </div>
+      {typeof pct === 'number' && (
+        <div className="hidden sm:flex items-center gap-1.5 w-24 flex-shrink-0">
+          <Bar2 pct={pct} tinggi={5} />
+          <span className="text-[10px] font-bold tabular-nums flex-shrink-0" style={{ color: warnaProgres(pct) }}>{pct}%</span>
+        </div>
+      )}
       <div className="flex items-center gap-2 flex-shrink-0">
         {kanan}
         {onClick && <span className="text-slate-300" aria-hidden="true">›</span>}

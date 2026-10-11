@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminClient } from '@/lib/supabase-admin';
+import { jalankanSemuaJadwal } from '@/lib/fs-jadwal-server';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +20,9 @@ export const dynamic = 'force-dynamic';
  * assignment aktif sekaligus, bukan cuma milik satu PIC yang sedang login -
  * makanya harus lewat service_role (route ini), bukan RPC biasa dari klien.
  *
+ * Sekaligus membuat SIKLUS MINGGUAN OTOMATIS untuk project yang jadwal
+ * harinya sudah dipilih Admin (lib/fs-jadwal-server.ts).
+ *
  * Diamankan dengan CRON_SECRET (header Authorization: Bearer <secret>,
  * persis konvensi Vercel Cron) - lihat docs/field-service-deployment-guide.md
  * untuk cara memasangnya di Vercel.
@@ -34,9 +38,16 @@ export async function GET(request: NextRequest) {
   }
 
   const supabase = getAdminClient();
+
+  // Siklus mingguan otomatis DULUAN: instance yang dibuat di bawah lalu
+  // langsung tersambung ke siklus minggu ini, bukan menggantung tanpa siklus.
+  // Gagal di satu project tidak boleh menghentikan materialisasi harian.
+  const siklus = await jalankanSemuaJadwal(supabase).catch((e: unknown) =>
+    [{ projectId: '-', status: 'gagal' as const, pesan: e instanceof Error ? e.message : String(e) }]);
+
   const { data, error } = await supabase.rpc('fs_materialize_daily_instances');
   if (error) {
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: false, error: error.message, siklus }, { status: 500 });
   }
-  return NextResponse.json({ ok: true, instances_created: data });
+  return NextResponse.json({ ok: true, instances_created: data, siklus });
 }

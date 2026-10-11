@@ -73,6 +73,17 @@ interface MasonryProps {
   /** Jarak antar kartu (px), horizontal maupun vertikal. Default 12. */
   gap?: number;
   className?: string;
+  /**
+   * Kartu tertentu boleh "melebar" mengambil lebih dari satu kolom dasar -
+   * kunci di sini HARUS sama dengan `key` yang dipasang di kartu tersebut.
+   * Dipakai untuk kartu yang butuh lebar (tabel, daftar) supaya tidak
+   * dijejalkan ke lebar kolom sempit yang sama dengan kartu ikon/donat di
+   * sebelahnya - kartu lebar dan beberapa kartu sempit yang bertumpuk di
+   * kolom sisanya jadi terlihat SATU baris bento yang disengaja, bukan
+   * grid seragam yang kaku. Nilai dibatasi otomatis ke jumlah kolom yang
+   * sedang aktif (mis. span:3 di layar yang cuma muat 2 kolom -> jadi 2).
+   */
+  spans?: Record<string, number>;
 }
 
 type Layout = { posisi: Map<string, Posisi>; tinggi: number; siap: boolean };
@@ -93,7 +104,7 @@ function layoutSama(a: Layout, b: Layout): boolean {
 }
 function dekatTinggi(x: number, y: number): boolean { return Math.abs(x - y) < 0.5; }
 
-export function Masonry({ children, columns = 3, minColumnWidth = 260, gap = 12, className }: MasonryProps) {
+export function Masonry({ children, columns = 3, minColumnWidth = 260, gap = 12, className, spans }: MasonryProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [layout, setLayout] = useState<Layout>({ posisi: new Map(), tinggi: 0, siap: false });
@@ -106,8 +117,24 @@ export function Masonry({ children, columns = 3, minColumnWidth = 260, gap = 12,
   useEffect(() => { layoutRef.current = layout; }, [layout]);
 
   const items = Children.toArray(children).filter(isValidElement) as React.ReactElement[];
-  const keys = items.map((el, i) => String(el.key ?? i));
+  // BUG NYATA yang sempat lolos (ditemukan lewat pengukuran DOM langsung -
+  // kartu yang diberi `spans` tidak pernah benar-benar melebar, lebarnya
+  // identik dengan kartu lain di sebelahnya): React.Children.toArray()
+  // MEMBUBUHI AWALAN ke tiap key eksplisit demi keunikan saat me-flatten
+  // (mis. key="wilayah-perlu-perhatian" yang ditulis pemanggil berubah
+  // jadi ".$wilayah-perlu-perhatian" begitu dibaca lewat `el.key` di sini) -
+  // jadi lookup `spans['wilayah-perlu-perhatian']` selalu gagal cocok
+  // dengan key yang SUDAH diawali itu, lebarSpan diam-diam selalu jatuh ke
+  // default 1. Melucuti awalan `.$` mengembalikan string key ASLI yang
+  // ditulis pemanggil, supaya prop `spans` (dan segala pencocokan key
+  // lain di berkas ini) bekerja seperti yang terlihat di kode pemanggil.
+  const keys = items.map((el, i) => (el.key != null ? String(el.key).replace(/^\.\$/, '') : String(i)));
   const kunciGabung = keys.join('|');
+  // String stabil dari `spans` untuk deps useCallback - `spans` sendiri
+  // objek baru tiap render kalau pemanggil menulisnya sebagai literal
+  // inline (`spans={{...}}`), jadi tidak bisa jadi dependency langsung
+  // tanpa membuat hitungUlang dibuat ulang setiap render.
+  const spansGabung = spans ? JSON.stringify(spans) : '';
 
   const hitungUlang = useCallback(() => {
     const kontainer = containerRef.current;
@@ -128,20 +155,55 @@ export function Masonry({ children, columns = 3, minColumnWidth = 260, gap = 12,
     for (const kunci of keys) {
       const el = itemRefs.current.get(kunci);
       const tinggiKartu = el ? el.getBoundingClientRect().height : 0;
+      const lebarSpan = Math.max(1, Math.min(jumlahKolom, Math.round(spans?.[kunci] ?? 1)));
 
-      // Kolom paling pendek duluan - inilah inti algoritma masonry.
-      let kolomPendek = 0;
-      for (let i = 1; i < jumlahKolom; i++) {
-        if (tinggiKolom[i] < tinggiKolom[kolomPendek]) kolomPendek = i;
+      // Jendela kolom-berdampingan yang PALING PENDEK duluan - generalisasi
+      // dari "kolom paling pendek duluan" untuk kartu selebar N kolom:
+      // dicoba tiap kemungkinan titik awal, dipilih yang tinggi
+      // MAKSIMUM di antara kolom-kolom yang dilewatinya paling kecil (itu
+      // yang membatasi seberapa tinggi kartu ini boleh mulai, karena kartu
+      // lebar harus duduk rata menyentuh SEMUA kolom yang dilewatinya).
+      let mulaiTerbaik = 0;
+      let tinggiTerbaik = Infinity;
+      for (let s = 0; s <= jumlahKolom - lebarSpan; s++) {
+        let tinggiMaksDiJendela = 0;
+        for (let i = s; i < s + lebarSpan; i++) tinggiMaksDiJendela = Math.max(tinggiMaksDiJendela, tinggiKolom[i]);
+        if (tinggiMaksDiJendela < tinggiTerbaik) { tinggiTerbaik = tinggiMaksDiJendela; mulaiTerbaik = s; }
+      }
+
+      // BUG NYATA yang sempat lolos (ditemukan lewat screenshot user -
+      // "masih banyak area mubazir kosong"): begitu kartu lebar (span > 1)
+      // ditaruh di titik SETINGGI kolom yang PALING TINGGI di jendelanya,
+      // kolom-kolom LAIN di jendela yang sama (lebih pendek) menyisakan
+      // celah kosong di ATAS kartu lebar itu - kartu terakhir di kolom
+      // pendek itu tidak pernah diregangkan untuk menutup celahnya sendiri
+      // sampai akhir (dan bahkan di akhir pun bukan celah TENGAH yang
+      // ditutup, cuma celah di baris paling bawah kolom). Sebelum menaruh
+      // kartu ini, tutup dulu celah itu: regangkan kartu TERAKHIR di tiap
+      // kolom yang lebih pendek dari titik mulai kartu baru ini supaya
+      // rata dulu, baru kartu baru disambung tepat di bawahnya.
+      for (let i = mulaiTerbaik; i < mulaiTerbaik + lebarSpan; i++) {
+        if (tinggiKolom[i] < tinggiTerbaik - 1 && kunciTerakhirPerKolom[i]) {
+          const kunciSebelumnya = kunciTerakhirPerKolom[i]!;
+          const posSebelumnya = posisiBaru.get(kunciSebelumnya);
+          if (posSebelumnya) {
+            const tinggiPenutup = (tinggiTerbaik - gap) - posSebelumnya.top;
+            if (tinggiPenutup > 1) posisiBaru.set(kunciSebelumnya, { ...posSebelumnya, height: tinggiPenutup });
+          }
+        }
+        tinggiKolom[i] = tinggiTerbaik;
       }
 
       posisiBaru.set(kunci, {
-        top: tinggiKolom[kolomPendek],
-        left: kolomPendek * (lebarKolom + gap),
-        width: lebarKolom,
+        top: tinggiTerbaik,
+        left: mulaiTerbaik * (lebarKolom + gap),
+        width: lebarKolom * lebarSpan + gap * (lebarSpan - 1),
       });
-      tinggiKolom[kolomPendek] += tinggiKartu + gap;
-      kunciTerakhirPerKolom[kolomPendek] = kunci;
+      const tinggiSetelahKartu = tinggiTerbaik + tinggiKartu + gap;
+      for (let i = mulaiTerbaik; i < mulaiTerbaik + lebarSpan; i++) {
+        tinggiKolom[i] = tinggiSetelahKartu;
+        kunciTerakhirPerKolom[i] = kunci;
+      }
     }
 
     const tinggiMaks = tinggiKolom.length ? Math.max(...tinggiKolom) - gap : 0;
@@ -198,7 +260,7 @@ export function Masonry({ children, columns = 3, minColumnWidth = 260, gap = 12,
     layoutRef.current = hasilBaru;
     setLayout(hasilBaru);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [columns, minColumnWidth, gap, kunciGabung]);
+  }, [columns, minColumnWidth, gap, kunciGabung, spansGabung]);
 
   // Pengukuran pertama SEBELUM browser mengecat layar (useLayoutEffect,
   // bukan useEffect) - supaya frame "belum tertata" (kartu numpuk vertikal,

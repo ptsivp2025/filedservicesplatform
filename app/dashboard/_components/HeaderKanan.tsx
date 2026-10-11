@@ -133,17 +133,13 @@ export function HeaderKanan({ userId, onBuka }: {
       {/* Konteks siklus - disembunyikan di layar sempit supaya tidak
           bertabrakan dengan tombol menu. */}
       {siklus && (
-        <div className="hidden lg:flex items-center gap-2.5 pl-3 pr-3.5 py-1.5 rounded-xl border border-slate-200 bg-white/70">
-          <div className="leading-tight">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Siklus berjalan</p>
-            <p className="text-[12px] font-bold text-slate-700 truncate max-w-[190px]">{siklus.nama}</p>
-          </div>
-          <div className="text-right leading-tight">
-            <p className="text-[15px] font-bold tabular-nums" style={{ color: warnaProgress(siklus.pct) }}>
-              {siklus.pct}%
-            </p>
-            {st && <p className="text-[9px] font-bold uppercase tracking-wide" style={{ color: st.color }}>{st.label}</p>}
-          </div>
+        <div className="hidden lg:inline-flex items-center gap-2 px-3 min-h-[34px] rounded-kontrol border border-slate-200 bg-slate-50">
+          <span aria-hidden="true">🗓️</span>
+          <span className="text-[12px] font-semibold text-slate-600 truncate max-w-[180px]">{siklus.nama}</span>
+          <span className="text-[11px] font-black tabular-nums rounded-full px-1.5 py-0.5 leading-none bg-white border border-slate-200"
+            style={{ color: warnaProgress(siklus.pct) }} title={st?.label}>
+            {siklus.pct}%
+          </span>
         </div>
       )}
 
@@ -152,16 +148,14 @@ export function HeaderKanan({ userId, onBuka }: {
         <button type="button" onClick={() => { setBuka(b => !b); if (!buka) void muat(); }}
           aria-label={belumDibaca > 0 ? `${belumDibaca} notifikasi belum dibaca` : 'Notifikasi'}
           aria-expanded={buka}
-          className="relative w-9 h-9 rounded-xl flex items-center justify-center transition-colors duration-200 cursor-pointer border focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
-          style={{
-            background: belumDibaca > 0 ? '#EFF6FF' : 'rgba(255,255,255,0.7)',
-            borderColor: belumDibaca > 0 ? '#BFDBFE' : '#E2E8F0',
-            color: belumDibaca > 0 ? '#1E40AF' : '#64748B',
-          }}>
-          <Bell size={17} />
+          className={`relative w-[34px] h-[34px] rounded-kontrol flex items-center justify-center transition-colors duration-200 cursor-pointer border
+                      ${belumDibaca > 0
+                        ? 'bg-aksen-50 border-aksen-200 text-aksen-700 hover:bg-aksen-100'
+                        : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'}`}>
+          <Bell size={16} />
           {belumDibaca > 0 && (
             <span className="absolute -top-1 -right-1 min-w-[17px] h-[17px] px-1 rounded-full text-white text-[10px] font-bold grid place-items-center tabular-nums"
-              style={{ background: '#DC2626' }}>
+              style={{ background: '#e34948' }}>
               {belumDibaca > 99 ? '99+' : belumDibaca}
             </span>
           )}
@@ -178,7 +172,7 @@ export function HeaderKanan({ userId, onBuka }: {
               </div>
               {belumDibaca > 0 && (
                 <button type="button" onClick={() => void tandaiSemua()}
-                  className="text-[11px] font-bold text-blue-700 hover:underline flex items-center gap-1 cursor-pointer">
+                  className="text-[11px] font-bold text-aksen-700 hover:underline flex items-center gap-1 cursor-pointer">
                   <CheckCheck size={12} aria-hidden="true" /> Tandai semua
                 </button>
               )}

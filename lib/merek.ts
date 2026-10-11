@@ -76,12 +76,12 @@ export const MEREK_BAWAAN: Merek = {
   warnaUtama: '#e11d48',
   warnaUtama2: '#be123c',
   warnaAksen: '#c8861d',
-  // Kosong sengaja - bawaan sekarang gradasi warnaLatarAwal/warnaLatarAkhir di
-  // bawah, bukan foto IndoVisual seperti sebelumnya (lihat gradasiLatarPlatform).
+  // Kosong sengaja - bawaan sekarang latar terang rata (gaya Sales Management
+  // Platform), bukan foto atau gradasi gelap. Lihat LEGACY_LATAR di bawah.
   gambarLatarDasbor: '',
-  warnaSidebar: 'rgba(255,255,255,0.96)',
-  warnaLatarAwal: '#1e1b2e',
-  warnaLatarAkhir: '#881337',
+  warnaSidebar: '#ffffff',
+  warnaLatarAwal: '#f1f5f9',
+  warnaLatarAkhir: '#f1f5f9',
 
   // Kosong sengaja juga - panel kiri login pakai gradasi warnaLogin/warnaLogin2
   // pekat penuh (lihat gradasiPanelLogin), bukan foto+tint seperti sebelumnya.
@@ -102,6 +102,32 @@ export const FIELD_LOGIN = [
 
 /** Kunci baris di app_settings. Satu baris, isinya JSON. */
 export const KUNCI_MEREK = 'merek';
+
+/**
+ * Nilai lama yang diperlakukan sama dengan KOSONG oleh bersihkanMerek.
+ * Ditaruh di atas (bukan di dekat bersihkanMerek) karena bersihkanMerek sudah
+ * dipanggil saat modul ini dimuat - konstanta yang dideklarasikan di bawahnya
+ * masih dalam "temporal dead zone" dan akan melempar ReferenceError.
+ *
+ * LEGACY_BG_PATH - path foto IndoVisual LAMA, dulu bawaan gambarLatar/
+ * gambarLatarDasbor sebelum diganti gradasi. Baris app_settings yang sudah
+ * kadung menyimpannya (tersimpan eksplisit, atau ditulis kode versi lama yang
+ * menyalin bawaan apa adanya) akan terus menimpa bawaan baru - "kenapa masih
+ * ada gambar IVP_Background" dilaporkan user berulang kali.
+ */
+const LEGACY_BG_PATH = '/field-service-bg.jpg';
+
+/**
+ * Bawaan LAMA latar dashboard (gradasi gelap ungu->maroon, sidebar putih
+ * tembus) - alasannya sama dengan LEGACY_BG_PATH. Diperlakukan kosong supaya
+ * pindah ke latar terang gaya Sales Management Platform berlaku otomatis di
+ * semua deployment.
+ */
+const LEGACY_LATAR: Partial<Record<keyof Merek, string>> = {
+  warnaLatarAwal: '#1e1b2e',
+  warnaLatarAkhir: '#881337',
+  warnaSidebar: 'rgba(255,255,255,0.96)',
+};
 
 // Simpanan sementara
 
@@ -130,7 +156,10 @@ function tulisSimpanan(kunci: string, nilai: unknown): void {
   try { window.sessionStorage.setItem(kunci, JSON.stringify(nilai)); } catch { /* kuota penuh - abaikan */ }
 }
 
-let merekSekarang: Merek = { ...MEREK_BAWAAN, ...(bacaSimpanan<Partial<Merek>>(SIMPAN_MEREK) ?? {}) };
+// Simpanan sesi dibersihkan juga (bersihkanMerek dideklarasikan sebagai
+// function, jadi aman dipanggil di sini) - kalau tidak, sesi yang sudah
+// menyimpan latar gelap lama akan berkedip gelap dulu sebelum muatMerek selesai.
+let merekSekarang: Merek = { ...MEREK_BAWAAN, ...bersihkanMerek(bacaSimpanan<Partial<Merek>>(SIMPAN_MEREK) ?? {}) };
 // Dipasang sedini mungkin supaya CSS tidak sempat memakai warna bawaan lebih
 // dulu lalu berkedip ke warna merek saat pemuatan selesai.
 if (typeof document !== 'undefined') {
@@ -191,21 +220,8 @@ export function muatMerek(): Promise<void> {
 /** Paksa muat ulang - dipakai setelah pengaturan disimpan dari Admin Panel. */
 export function muatUlangMerek(): Promise<void> { pemuatan = null; return muatMerek(); }
 
-/**
- * Path foto IndoVisual LAMA - dulu jadi bawaan gambarLatar/gambarLatarDasbor
- * sebelum diganti gradasi warna. Baris `app_settings` yang sudah kadung
- * menyimpan path ini dari SEBELUM perubahan (baik tersimpan eksplisit lewat
- * Admin Panel, atau tertulis oleh kode versi lama yang dulu menyalin bawaan
- * apa adanya) akan TERUS menimpa gradasi baru walau bawaan di kode sudah
- * diganti - "kenapa masih ada gambar IVP_Background" dilaporkan user
- * berulang kali. Path spesifik ini SENGAJA diperlakukan sama dengan kosong
- * di sini (bukan cuma di kode render) - jadi satu perbaikan berlaku untuk
- * SEMUA pemakainya (dashboard/field-service/teknisi) sekaligus, tanpa perlu
- * pengguna membuka Admin Panel dan menekan "Kembalikan ke bawaan" manual.
- */
-const LEGACY_BG_PATH = '/field-service-bg.jpg';
-
-/** Buang field yang bukan milik Merek dan nilai non-string. */
+/** Buang field yang bukan milik Merek, nilai non-string, dan nilai lama
+ *  (LEGACY_BG_PATH / LEGACY_LATAR di atas) yang diperlakukan sama dengan kosong. */
 function bersihkanMerek(isi: Partial<Merek>): Partial<Merek> {
   const hasil: Partial<Merek> = {};
   for (const kunci of Object.keys(MEREK_BAWAAN) as (keyof Merek)[]) {
@@ -214,6 +230,7 @@ function bersihkanMerek(isi: Partial<Merek>): Partial<Merek> {
     const rapi = nilai.trim();
     if (rapi === '') continue;
     if ((kunci === 'gambarLatar' || kunci === 'gambarLatarDasbor') && rapi === LEGACY_BG_PATH) continue;
+    if (LEGACY_LATAR[kunci] && rapi.toLowerCase() === LEGACY_LATAR[kunci]) continue;
     hasil[kunci] = rapi;
   }
   return hasil;
@@ -374,6 +391,35 @@ export function tulisWarnaKeCSS(m: Merek = merekSekarang): void {
   akar.style.setProperty('--merek-sidebar', m.warnaSidebar);
   akar.style.setProperty('--merek-latar-awal', m.warnaLatarAwal);
   akar.style.setProperty('--merek-latar-akhir', m.warnaLatarAkhir);
+
+  // Palet aksen-* 50-900 diturunkan dari warna utama (pola Sales Management
+  // Platform): satu warna yang dipilih Admin mengalir ke seluruh kelas
+  // aksen-* - tombol, menu aktif, lencana - tanpa memaksa Admin memilih
+  // sepuluh warna satu per satu. Tingkat gelapnya benar-benar gelap, jadi
+  // kontras teks di atasnya tetap terjaga.
+  const utama = keRgb(m.warnaUtama) ?? keRgb(MEREK_BAWAAN.warnaUtama)!;
+  const utama2 = keRgb(m.warnaUtama2) ?? utama;
+  const tingkat: [string, [number, number, number], number][] = [
+    ['50', utama, 0.94], ['100', utama, 0.86], ['200', utama, 0.72], ['300', utama, 0.54],
+    ['400', utama, 0.30], ['500', utama, 0.14], ['600', utama, 0], ['700', utama, -0.10],
+    ['800', utama2, -0.05], ['900', utama2, -0.25],
+  ];
+  for (const [nama, dasar, rasio] of tingkat) akar.style.setProperty(`--aksen-${nama}`, campurWarna(dasar, rasio));
+}
+
+function keRgb(hex: string): [number, number, number] | null {
+  const h = (hex ?? '').trim().replace('#', '');
+  const penuh = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+  if (!/^[0-9a-fA-F]{6}$/.test(penuh)) return null;
+  return [parseInt(penuh.slice(0, 2), 16), parseInt(penuh.slice(2, 4), 16), parseInt(penuh.slice(4, 6), 16)];
+}
+
+/** Campur dengan putih (rasio > 0) atau hitam (rasio < 0) -> "R G B". */
+function campurWarna([r, g, b]: [number, number, number], rasio: number): string {
+  const target = rasio > 0 ? 255 : 0;
+  const k = Math.abs(rasio);
+  const c = (v: number) => Math.round(v + (target - v) * k);
+  return `${c(r)} ${c(g)} ${c(b)}`;
 }
 
 // Jembatan React

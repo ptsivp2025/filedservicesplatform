@@ -22,7 +22,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   CalendarDays, CheckCircle2, Building2, AlertTriangle, History,
-  Map as MapIcon, Users, Search,
+  Map as MapIcon, Users, Search, Repeat,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import {
@@ -37,6 +37,7 @@ import {
   CYCLE_STATUS_LABEL, persen, warnaProgress, rentangTanggal,
   type Cycle, type CycleOverview, type BuildingProgress,
 } from '@/lib/fs-cycle';
+import { HARI_PILIHAN, JADWAL_KOSONG, labelHari, type JadwalSiklus } from '@/lib/fs-jadwal';
 
 interface RingkasanBeku {
   cycle_id: string; total_tv: number; completed_tv: number; failed_tv: number;
@@ -44,8 +45,6 @@ interface RingkasanBeku {
   cleared_by_name: string | null; cleared_at: string | null;
   objects_deleted: number | null; objects_failed: number | null;
 }
-
-interface ContentOpsi { id: string; name: string; version: number; valid_from: string; valid_until: string; }
 
 /** Sabtu-Minggu terdekat SETELAH hari ini - nilai awal form, karena itulah
  *  yang hampir selalu ingin dibuat admin pada hari kerja. */
@@ -81,7 +80,10 @@ export function KelolaSiklus({ projectId, bolehKelola, bolehProvider, beritahu }
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [ringkasan, setRingkasan] = useState<Record<string, RingkasanBeku>>({});
   const [aktifOverview, setAktifOverview] = useState<Record<string, CycleOverview>>({});
-  const [contents, setContents] = useState<ContentOpsi[]>([]);
+  const [jadwal, setJadwal] = useState<JadwalSiklus | null>(null);
+  const [modalJadwal, setModalJadwal] = useState(false);
+  const [drafJadwal, setDrafJadwal] = useState<JadwalSiklus>(JADWAL_KOSONG);
+  const [simpanJadwalJalan, setSimpanJadwalJalan] = useState(false);
   const [memuat, setMemuat] = useState(true);
   const [aksiJalan, setAksiJalan] = useState<string | null>(null);
   const [cariRiwayat, setCariRiwayat] = useState('');
@@ -90,12 +92,9 @@ export function KelolaSiklus({ projectId, bolehKelola, bolehProvider, beritahu }
 
   const awal = akhirPekanBerikutnya();
   const [form, setForm] = useState({
-    mulai: awal.mulai, selesai: awal.selesai, contentId: '',
+    mulai: awal.mulai, selesai: awal.selesai,
     reviewMulai: tambahHari(awal.selesai, 1), reviewSelesai: tambahHari(awal.selesai, 14),
     nama: '',
-    /** Sekali admin mengetik nama sendiri, memilih konten lain tidak boleh
-     *  menimpanya - ketikan orang selalu menang atas isian otomatis. */
-    namaDiubahManual: false,
   });
   const [menyimpan, setMenyimpan] = useState(false);
   const [modalSiklus, setModalSiklus] = useState(false);
@@ -106,17 +105,17 @@ export function KelolaSiklus({ projectId, bolehKelola, bolehProvider, beritahu }
     setMemuat(true);
     try {
       const daftar: Cycle[] = await ambilCycles(projectId);
-      const [{ data: sum }, { data: ct }] = await Promise.all([
+      const [{ data: sum }, jadwalRes] = await Promise.all([
         supabase.from('fs_cycle_summaries')
           .select('cycle_id, total_tv, completed_tv, failed_tv, revision_tv, verified_tv, closed_by_name, cleared_by_name, cleared_at, objects_deleted, objects_failed'),
-        supabase.from('fs_content').select('id, name, version, valid_from, valid_until')
-          .eq('project_id', projectId).eq('status', 'active').order('valid_from', { ascending: false }),
+        fetch(`/api/cycles/jadwal?projectId=${encodeURIComponent(projectId)}`, { credentials: 'include' })
+          .then(r => (r.ok ? r.json() : null)).catch(() => null),
       ]);
       setCycles(daftar);
       const peta: Record<string, RingkasanBeku> = {};
       for (const r of (sum ?? []) as RingkasanBeku[]) peta[r.cycle_id] = r;
       setRingkasan(peta);
-      setContents((ct ?? []) as ContentOpsi[]);
+      setJadwal((jadwalRes?.jadwal as JadwalSiklus | undefined) ?? { ...JADWAL_KOSONG });
 
       // Siklus yang masih berjalan belum punya ringkasan beku - angkanya
       // dihitung langsung supaya daftarnya tidak menampilkan "0 TV".
@@ -154,18 +153,41 @@ export function KelolaSiklus({ projectId, bolehKelola, bolehProvider, beritahu }
     }));
   };
 
-  const kontenTerpilih = contents.find(c => c.id === form.contentId) ?? null;
+  const bukaModalJadwal = () => {
+    setDrafJadwal(jadwal ?? { ...JADWAL_KOSONG });
+    setModalJadwal(true);
+  };
+
+  const simpanJadwal = async () => {
+    setSimpanJadwalJalan(true);
+    try {
+      const res = await fetch('/api/cycles/jadwal', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, jadwal: drafJadwal }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { beritahu('gagal', data?.error ?? 'Gagal menyimpan jadwal.'); return; }
+      setJadwal(data.jadwal as JadwalSiklus);
+      setModalJadwal(false);
+      const h = data.hasil as { status: string; nama?: string; instanceBaru?: number; pesan?: string } | undefined;
+      if (drafJadwal.hari.length === 0) beritahu('ok', 'Jadwal otomatis dimatikan. Siklus hanya dibuat manual.');
+      else if (h?.status === 'dibuat') beritahu('ok', `Jadwal tersimpan. Siklus "${h.nama}" langsung dibuat dengan ${h.instanceBaru ?? 0} pekerjaan.`);
+      else if (h?.status === 'gagal') beritahu('gagal', `Jadwal tersimpan, tapi siklus minggu ini gagal dibuat: ${h.pesan ?? ''}`);
+      else beritahu('ok', 'Jadwal tersimpan. Siklus berikutnya dibuat otomatis setiap minggu.');
+      void muat();
+    } finally { setSimpanJadwalJalan(false); }
+  };
 
   const simpan = async () => {
     if (!form.mulai || !form.selesai) { beritahu('gagal', 'Tanggal pengerjaan wajib diisi.'); return; }
     if (form.selesai < form.mulai) { beritahu('gagal', 'Tanggal selesai tidak boleh sebelum tanggal mulai.'); return; }
     setMenyimpan(true);
-    // Nama siklus = nama konten. Kalau kontennya belum ditentukan, barulah
-    // jatuh ke rentang tanggalnya sebagai nama sementara.
-    const nama = form.nama.trim() || kontenTerpilih?.name || `Weekend ${rentangTanggal(form.mulai, form.selesai)}`;
+    // Tanpa konten: siklus dinamai menurut rentang tanggalnya.
+    const nama = form.nama.trim() || `Siklus ${rentangTanggal(form.mulai, form.selesai)}`;
     const { error } = await supabase.from('fs_cycles').insert({
       project_id: projectId, name: nama,
-      content_id: form.contentId || null,
+      content_id: null,
       execution_start: form.mulai, execution_end: form.selesai,
       review_start: form.reviewMulai || null, review_end: form.reviewSelesai || null,
       status: 'PLANNED',
@@ -202,27 +224,64 @@ export function KelolaSiklus({ projectId, bolehKelola, bolehProvider, beritahu }
           terbuka memakan setengah layar. */}
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h2 className="text-base font-black text-slate-900">Siklus Weekend</h2>
+          <h2 className="text-base font-black text-slate-900">Siklus Mingguan</h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Siapkan siklus akhir pekan, tugaskan PIC, lalu pantau sampai ditutup dan dibersihkan.
+            Siklus dibuat otomatis tiap minggu di hari yang dipilih Admin. Pantau siapa bertugas, kapan, dan evidence-nya.
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {bolehProvider && (
             <button type="button" onClick={() => setModalAssign(true)}
-              className="text-sm font-bold px-3.5 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 whitespace-nowrap">
+              className="text-[12px] font-bold px-3 py-2 rounded-kontrol border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 whitespace-nowrap">
               Tugaskan PIC ke Wilayah
             </button>
           )}
           {bolehKelola && (
             <button type="button" onClick={() => setModalSiklus(true)}
-              className="text-sm font-bold px-3.5 py-2 rounded-xl text-white whitespace-nowrap"
-              style={{ background: '#1d4ed8' }}>
-              + Buat Siklus Weekend
+              className="text-[12px] font-bold px-3 py-2 rounded-kontrol border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 whitespace-nowrap">
+              + Siklus Manual
+            </button>
+          )}
+          {bolehKelola && (
+            <button type="button" onClick={bukaModalJadwal}
+              className="text-[12px] font-bold px-3 py-2 rounded-kontrol bg-aksen-700 hover:bg-aksen-800 text-white whitespace-nowrap transition-colors">
+              Atur Jadwal Otomatis
             </button>
           )}
         </div>
       </div>
+
+      {/* Pita jadwal otomatis - jawaban atas "minggu ini jalan otomatis
+          atau belum?" tanpa harus membuka pengaturan. */}
+      {jadwal && (jadwal.hari.length === 0 ? (
+        <div className="rounded-kartu border border-amber-200 bg-amber-50 px-4 py-3 flex items-center gap-3 flex-wrap">
+          <Repeat size={16} className="text-amber-700 flex-shrink-0" aria-hidden="true" />
+          <p className="flex-1 min-w-[200px] text-[12px] text-amber-900 leading-snug">
+            <span className="font-bold">Jadwal otomatis belum diatur.</span>{' '}
+            Pilih hari pengerjaan sekali saja — setelah itu siklus dan daftar pekerjaan PIC dibuat otomatis setiap minggu.
+          </p>
+          {bolehKelola && (
+            <button type="button" onClick={bukaModalJadwal}
+              className="text-[12px] font-bold px-3 py-1.5 rounded-kontrol bg-white border border-amber-300 text-amber-900 hover:bg-amber-100 whitespace-nowrap">
+              Pilih Hari
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="rounded-kartu border border-aksen-100 bg-aksen-50 px-4 py-3 flex items-center gap-3 flex-wrap">
+          <Repeat size={16} className="text-aksen-700 flex-shrink-0" aria-hidden="true" />
+          <p className="flex-1 min-w-[200px] text-[12px] text-aksen-900 leading-snug">
+            <span className="font-bold">Otomatis setiap {labelHari(jadwal.hari)}.</span>{' '}
+            Review client {jadwal.reviewHari} hari · {jadwal.aktifkanOtomatis ? 'langsung aktif untuk PIC' : 'dibuat sebagai Direncanakan'}.
+          </p>
+          {bolehKelola && (
+            <button type="button" onClick={bukaModalJadwal}
+              className="text-[12px] font-bold px-3 py-1.5 rounded-kontrol bg-white border border-aksen-200 text-aksen-800 hover:bg-aksen-100 whitespace-nowrap">
+              Ubah
+            </button>
+          )}
+        </div>
+      ))}
 
       {/* Ringkasan - ubin KPI berikon, satu bentuk dengan Dashboard. */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5">
@@ -246,7 +305,9 @@ export function KelolaSiklus({ projectId, bolehKelola, bolehProvider, beritahu }
           </div>
           {berjalan.length === 0 ? (
             <Kosong judul="Tidak ada siklus berjalan"
-              teks="Buat siklus untuk akhir pekan berikutnya, lalu tugaskan PIC-nya." />
+              teks={jadwal && jadwal.hari.length > 0
+                ? `Siklus berikutnya dibuat otomatis untuk ${labelHari(jadwal.hari)} minggu depan.`
+                : 'Atur jadwal otomatis, atau buat siklus manual, lalu tugaskan PIC-nya.'} />
           ) : (
             <div className="divide-y divide-slate-50 max-h-[420px] overflow-y-auto">
               {berjalan.map(c => {
@@ -305,8 +366,7 @@ export function KelolaSiklus({ projectId, bolehKelola, bolehProvider, beritahu }
                               await pindahStatusCycle(c.id, 'ACTIVE');
                               beritahu('ok', 'Siklus diaktifkan — PIC sudah bisa mulai bekerja.');
                             })}
-                            className="text-[11px] font-bold px-3 py-1.5 rounded-lg text-white disabled:opacity-50 cursor-pointer whitespace-nowrap"
-                            style={{ background: '#1d4ed8' }}>
+                            className="text-[11px] font-bold px-3 py-1.5 rounded-kecil bg-aksen-700 hover:bg-aksen-800 text-white disabled:opacity-50 cursor-pointer whitespace-nowrap">
                             {aksiJalan === c.id ? '…' : 'Aktifkan'}
                           </button>
                         )}
@@ -508,8 +568,8 @@ export function KelolaSiklus({ projectId, bolehKelola, bolehProvider, beritahu }
 
       {/* ── Modal: buat siklus ── */}
       <Modal buka={modalSiklus} onTutup={() => setModalSiklus(false)}
-        judul="Buat Siklus Weekend Baru" ikon="🗓️"
-        keterangan="Tentukan akhir pekan pengerjaan dan kontennya. Daftar TV diturunkan otomatis dari penugasan PIC."
+        judul="Buat Siklus Manual" ikon="🗓️"
+        keterangan="Untuk minggu di luar jadwal otomatis. Daftar TV diturunkan dari penugasan PIC."
         ukuran="lg" tutupDiLuar={false}
         footer={<>
           <TombolModal jenis="batal" onClick={() => setModalSiklus(false)}>Batal</TombolModal>
@@ -518,57 +578,23 @@ export function KelolaSiklus({ projectId, bolehKelola, bolehProvider, beritahu }
           </TombolModal>
         </>}>
         <div className="grid gap-3 md:grid-cols-2">
-          {/* KONTEN DULU, baru yang lain. Siklus itu ADALAH pemasangan sebuah
-              konten pada satu akhir pekan - jadi pertanyaan pertamanya
-              "konten apa", bukan "tanggal berapa". Sebelumnya menu Content
-              berdiri sendiri tanpa terhubung ke mana-mana, dan siklus diberi
-              nama generik "Weekend 1" yang tidak memberi tahu apa pun tentang
-              apa yang dipasang. */}
-          <div className="md:col-span-2">
-            <Kolom label="Konten yang dipasang minggu ini">
-              <SearchableSelect value={form.contentId}
-                onChange={v => {
-                  const c = contents.find(x => x.id === v);
-                  setForm(f => ({
-                    ...f,
-                    contentId: v,
-                    // Nama siklus mengikuti nama konten, kecuali admin sudah
-                    // menuliskan nama sendiri - jangan menimpa ketikan orang.
-                    nama: f.namaDiubahManual ? f.nama : (c ? c.name : ''),
-                  }));
-                }}
-                placeholder="Cari & pilih konten…"
-                options={[{ value: '', label: '— Belum ditentukan —' },
-                  ...contents.map(c => ({
-                    value: c.id,
-                    label: `${c.name} (v${c.version}) · tayang ${c.valid_from} s/d ${c.valid_until}`,
-                  }))]} />
-            </Kolom>
-            {kontenTerpilih && (
-              <p className="text-[11px] text-slate-500 mt-1.5">
-                Masa tayang konten <span className="font-semibold text-slate-700">{kontenTerpilih.valid_from} s/d {kontenTerpilih.valid_until}</span>
-                {' '}— berbeda dari tanggal pengerjaan di bawah, dan itu wajar: konten dipasang lebih dulu, baru tayang.
-              </p>
-            )}
-          </div>
-
-          <Kolom label="Pengerjaan mulai (Sabtu)">
+          <Kolom label="Pengerjaan mulai">
             <input type="date" value={form.mulai}
               onChange={e => ubahTanggal(e.target.value, form.selesai)} className={inputCls} />
           </Kolom>
-          <Kolom label="Pengerjaan selesai (Minggu)">
+          <Kolom label="Pengerjaan selesai">
             <input type="date" value={form.selesai}
               onChange={e => ubahTanggal(form.mulai, e.target.value)} className={inputCls} />
           </Kolom>
           <div className="md:col-span-2">
             <Kolom label="Nama siklus">
               <input value={form.nama}
-                onChange={e => setForm(f => ({ ...f, nama: e.target.value, namaDiubahManual: true }))}
-                placeholder={kontenTerpilih ? kontenTerpilih.name : `Weekend ${rentangTanggal(form.mulai, form.selesai)}`}
+                onChange={e => setForm(f => ({ ...f, nama: e.target.value }))}
+                placeholder={`Siklus ${rentangTanggal(form.mulai, form.selesai)}`}
                 className={inputCls} />
             </Kolom>
             <p className="text-[11px] text-slate-400 mt-1.5">
-              Terisi otomatis dari nama konten. Ubah hanya bila memang perlu berbeda.
+              Kosongkan untuk memakai rentang tanggal sebagai nama.
             </p>
           </div>
           <Kolom label="Masa review client mulai">
@@ -579,6 +605,55 @@ export function KelolaSiklus({ projectId, bolehKelola, bolehProvider, beritahu }
             <input type="date" value={form.reviewSelesai}
               onChange={e => setForm(f => ({ ...f, reviewSelesai: e.target.value }))} className={inputCls} />
           </Kolom>
+        </div>
+      </Modal>
+
+      {/* ── Modal: jadwal otomatis ── */}
+      <Modal buka={modalJadwal} onTutup={() => setModalJadwal(false)}
+        judul="Jadwal Siklus Otomatis" ikon="🔁"
+        keterangan="Pilih hari pengerjaan setiap minggu. Siklus + daftar pekerjaan PIC dibuat otomatis tanpa perlu memilih konten."
+        ukuran="md" tutupDiLuar={false}
+        footer={<>
+          <TombolModal jenis="batal" onClick={() => setModalJadwal(false)}>Batal</TombolModal>
+          <TombolModal jenis="utama" onClick={() => void simpanJadwal()} disabled={simpanJadwalJalan}>
+            {simpanJadwalJalan ? 'Menyimpan…' : 'Simpan Jadwal'}
+          </TombolModal>
+        </>}>
+        <div className="space-y-4">
+          <div>
+            <span className="block text-[11px] font-bold uppercase tracking-widest text-slate-500 mb-1.5">Hari pengerjaan</span>
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Hari pengerjaan">
+              {HARI_PILIHAN.map(h => {
+                const pilih = drafJadwal.hari.includes(h.dow);
+                return (
+                  <button key={h.dow} type="button" aria-pressed={pilih}
+                    onClick={() => setDrafJadwal(d => ({ ...d, hari: pilih ? d.hari.filter(x => x !== h.dow) : [...d.hari, h.dow] }))}
+                    className={`min-w-[52px] px-3 py-2 rounded-kontrol text-[12px] font-bold border transition-colors
+                      ${pilih ? 'bg-aksen-700 border-aksen-700 text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                    {h.pendek}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-slate-500 mt-1.5">
+              {drafJadwal.hari.length === 0
+                ? 'Belum ada hari dipilih — siklus tidak dibuat otomatis.'
+                : `Setiap minggu: ${labelHari(drafJadwal.hari)}. Siklus dibuat di awal minggu (Senin pagi).`}
+            </p>
+          </div>
+          <Kolom label="Lama masa review client (hari)">
+            <input type="number" min={1} max={60} value={drafJadwal.reviewHari}
+              onChange={e => setDrafJadwal(d => ({ ...d, reviewHari: Number(e.target.value) || 1 }))}
+              className={inputCls} />
+          </Kolom>
+          <label className="flex items-start gap-2.5 cursor-pointer">
+            <input type="checkbox" checked={drafJadwal.aktifkanOtomatis}
+              onChange={e => setDrafJadwal(d => ({ ...d, aktifkanOtomatis: e.target.checked }))}
+              className="mt-0.5 accent-aksen-700" />
+            <span className="text-[12px] text-slate-700 leading-snug">
+              <span className="font-bold">Langsung aktif</span> — PIC bisa mulai bekerja tanpa Admin menekan tombol Aktifkan.
+            </span>
+          </label>
         </div>
       </Modal>
 
